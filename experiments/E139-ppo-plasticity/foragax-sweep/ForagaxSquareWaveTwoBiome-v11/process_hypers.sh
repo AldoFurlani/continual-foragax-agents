@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=aip-amw8
-#SBATCH --job-name=E139-rtu-plasticity_foragax-sweep_ForagaxSquareWaveTwoBiome-v11_process_hypers
+#SBATCH --job-name=E139-ppo-plasticity_foragax-sweep_ForagaxSquareWaveTwoBiome-v11_process_hypers
 #SBATCH --mem-per-cpu=128G
 #SBATCH --ntasks=1
 #SBATCH --output=/scratch/%u/logs/slurm-%j.out
@@ -25,4 +25,4 @@ export JAX_PLATFORMS=cpu
 # hypers/9/RealTimeActorCriticMLPReLU.json and (via update_best_config, by
 # stripping "-sweep" from the path) the 10M eval config at
 # ../../foragax/ForagaxSquareWaveTwoBiome-v11/9/RealTimeActorCriticMLPReLU.json.
-$SLURM_TMPDIR/.venv/bin/python experiments/E139-rtu-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/hypers.py
+$SLURM_TMPDIR/.venv/bin/python experiments/E139-ppo-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/hypers.py

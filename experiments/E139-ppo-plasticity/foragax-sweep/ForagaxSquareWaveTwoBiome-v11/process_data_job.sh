@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=aip-amw8
-#SBATCH --job-name=E139-rtu-plasticity_foragax-sweep_ForagaxSquareWaveTwoBiome-v11_process_data
+#SBATCH --job-name=E139-ppo-plasticity_foragax-sweep_ForagaxSquareWaveTwoBiome-v11_process_data
 #SBATCH --mem-per-cpu=16G
 #SBATCH --ntasks=16
 #SBATCH --output=/scratch/%u/logs/slurm-%j.out
@@ -22,4 +22,4 @@ export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_thread
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
 export JAX_PLATFORMS=cpu
 
-$SLURM_TMPDIR/.venv/bin/python src/process_data.py experiments/E139-rtu-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11
+$SLURM_TMPDIR/.venv/bin/python src/process_data.py experiments/E139-ppo-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11

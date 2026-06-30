@@ -18,12 +18,12 @@ for fov in 9; do
         --cluster clusters/vulcan-gpu-vmap-32G.json \
         --tasks 5 --time 03:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
-        -e experiments/E139-rtu-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPReLU.json
+        -e experiments/E139-ppo-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPReLU.json
 
     # Vanilla PPO (ReLU everywhere, incl. the wide mid layer)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
         --tasks 24 --time 03:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
-        -e experiments/E139-rtu-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/ActorCriticMLPReLU.json
+        -e experiments/E139-ppo-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/ActorCriticMLPReLU.json
 done

@@ -1,10 +1,10 @@
 #!/bin/bash
 # Render plasticity figures for E139 RTU-PPO. Assumes process_data.py has
-# already produced results/E139-rtu-plasticity/.../data.parquet.
+# already produced results/E139-ppo-plasticity/.../data.parquet.
 
 set -e
 
-EXP=experiments/E139-rtu-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11
+EXP=experiments/E139-ppo-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11
 
 # Reward switches every 250k steps (square wave: half of the 500k period).
 # Use %.0f so macOS/BSD seq emits plain integers (it defaults to %g, which
@@ -15,7 +15,7 @@ SWITCHES=$(seq -f "%.0f" 250000 250000 9750000)
 # comparison; the per-alg plasticity figures go in plots/<alg>/ below.
 python src/learning_curve.py "$EXP" \
     --metrics ewm_reward \
-    --filter-alg-apertures RealTimeActorCriticMLP:9 ActorCriticMLP:9 RealTimeActorCriticMLPReLU:9 ActorCriticMLPReLU:9 \
+    --filter-alg-apertures Search-Oracle RealTimeActorCriticMLP:9 ActorCriticMLP:9 RealTimeActorCriticMLPReLU:9 ActorCriticMLPReLU:9 \
     --end-frame 10000000 \
     --vertical-lines $SWITCHES \
     --legend-on-bar \
