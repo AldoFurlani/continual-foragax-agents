@@ -37,6 +37,7 @@ from algorithms.nn.RealTimeACConvHintRTU import RealTimeActorCriticConvHintRTU
 from algorithms.nn.RealTimeACConvPooling import RealTimeActorCriticConvPooling
 from algorithms.nn.RealTimeACMLP import RealTimeActorCriticMLP
 from algorithms.nn.RealTimeACMLPMulti import RealTimeActorCriticMLPMulti
+from algorithms.nn.RealTimeACMLPStacked import RealTimeActorCriticMLPStacked
 from algorithms.PPORegistry import getAgent
 from experiment import ExperimentModel
 from utils.checkpoint import Checkpoint
@@ -115,6 +116,10 @@ class TrainConfig:
     use_hint_trace: bool = struct.field(pytree_node=False)
     use_layernorm: bool = struct.field(pytree_node=False)
     use_middle_layer: bool = struct.field(pytree_node=False)
+    # Stacked-RTU (RealTimeActorCriticMLPStacked) only: number of [RTU + MLP]
+    # residual blocks and whether residual adds are replaced by GTrXL GRU gates.
+    n_blocks: int = struct.field(pytree_node=False)
+    use_gating: bool = struct.field(pytree_node=False)
     conv: str = struct.field(pytree_node=False)
     allocate_frames: bool = struct.field(pytree_node=False)
     video_length: int = struct.field(pytree_node=False)
@@ -1069,6 +1074,9 @@ def experiment(rng, config: TrainConfig):
         kwargs["conv"] = config.conv
     if _agent_class is ActorCriticMLP:
         kwargs["use_middle_layer"] = config.use_middle_layer
+    if _agent_class is RealTimeActorCriticMLPStacked:
+        kwargs["n_blocks"] = config.n_blocks
+        kwargs["use_gating"] = config.use_gating
 
     # Create and initialize the network. `agent` is dynamically dispatched via
     # getAgent(config.agent_type); pyright sees only the base type so it can't
@@ -1113,13 +1121,18 @@ def experiment(rng, config: TrainConfig):
     )
     _is_plain_conv_rtu = _agent_class is RealTimeActorCriticConv
     _is_conv_hint_rtu = _agent_class is RealTimeActorCriticConvHintRTU
+    _is_stacked_rtu = _agent_class is RealTimeActorCriticMLPStacked
     _is_mlp_rtu = _agent_class in (
         RealTimeActorCriticMLP,
         RealTimeActorCriticMLPMulti,
         ActorCriticMLP,
     )
     activation_multiplier = 2 if config.activation == "crelu" else 1
-    if _is_plain_conv_rtu:
+    if _is_stacked_rtu:
+        # Every block's RTU reads the LayerNorm'd width-W stream (W = hidden_size);
+        # action/reward are folded into the stream by the input projection.
+        d_input = config.hidden_size
+    elif _is_plain_conv_rtu:
         # RTU receives [conv Dense(hidden_size), action, last_reward+hint, ...]
         d_input = (
             config.hidden_size * activation_multiplier + action_dim + hint_shape[0]
@@ -1147,6 +1160,10 @@ def experiment(rng, config: TrainConfig):
         d_input = config.hidden_size
     if _is_conv_hint_rtu:
         init_hstate = agent.initialize_memory(1, config.d_hidden, hint_dim)
+    elif _is_stacked_rtu:
+        init_hstate = agent.initialize_memory(
+            1, config.d_hidden, d_input, n_blocks=config.n_blocks  # pyright: ignore[reportCallIssue]
+        )
     else:
         init_hstate = agent.initialize_memory(1, config.d_hidden, d_input)
     network_params = network.init(_rng, init_hstate, init_x)
@@ -2077,6 +2094,10 @@ def main():
             ),
             use_middle_layer=bool(
                 hypers.get("representation", {}).get("use_middle_layer", True)
+            ),
+            n_blocks=int(hypers.get("representation", {}).get("n_blocks", 2)),
+            use_gating=bool(
+                hypers.get("representation", {}).get("use_gating", False)
             ),
             conv=str(hypers.get("representation", {}).get("conv", "Conv2D")),
             reward_trace_decay=float(

@@ -7,6 +7,7 @@ from algorithms.nn.RealTimeACConvHintRTU import RealTimeActorCriticConvHintRTU
 from algorithms.nn.RealTimeACConvPooling import RealTimeActorCriticConvPooling
 from algorithms.nn.RealTimeACMLP import RealTimeActorCriticMLP
 from algorithms.nn.RealTimeACMLPMulti import RealTimeActorCriticMLPMulti
+from algorithms.nn.RealTimeACMLPStacked import RealTimeActorCriticMLPStacked
 
 
 def getAgent(name):
@@ -24,6 +25,10 @@ def getAgent(name):
 
     if name.startswith("RealTimeActorCriticMLPMulti"):
         return RealTimeActorCriticMLPMulti
+
+    # Must precede the generic RealTimeActorCriticMLP prefix check.
+    if name.startswith("RealTimeActorCriticMLPStacked"):
+        return RealTimeActorCriticMLPStacked
 
     if name.startswith("ActorCriticConv"):
         return ActorCriticConv
