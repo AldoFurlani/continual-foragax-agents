@@ -1,9 +1,13 @@
 #!/bin/bash
 # E140: stacked RTU-PPO (LRU/S5-style [RTU + MLP] residual blocks) at depths
 # 1/2/4 on ForagaxSquareWaveTwoBiome-v11, 30 seeds x 10M steps, plus the
-# Search-Oracle reward reference. The three depths are the depth ablation:
-# same code path, only n_blocks varies (L1 is the within-family baseline).
-# scripts/slurm.py is idempotent -- re-run after timeouts to fill missing seeds.
+# Multi (2-RTU concat-idiom) non-residual baseline and the Search-Oracle
+# reward reference. The three Stacked depths are the depth ablation (same code
+# path, only n_blocks varies; L1 is the within-family baseline); Multi vs
+# Stacked-2 isolates "more recurrence" from "the residual redesign" (all at
+# d_hidden=512). scripts/slurm.py is idempotent -- re-run to fill missing seeds.
+#
+# To run ONLY the Multi baseline, use slurm_multi.sh instead.
 #
 # NOTE: compute_plasticity is OFF in the configs -- the stacked class is not yet
 # in _PROBED_CLASSES, so plasticity metrics would be a silent no-op. This run is
@@ -31,6 +35,13 @@ for fov in 9; do
         --tasks 5 --time 06:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPStacked4.json
+
+    # Multi RTU-PPO (2 stacked RTUs, concat idiom -- non-residual baseline)
+    python scripts/slurm.py \
+        --cluster clusters/vulcan-gpu-vmap-32G.json \
+        --tasks 5 --time 06:00:00 --runs 30 --force \
+        --entry src/rtu_ppo.py \
+        -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPMulti.json
 done
 
 # Search-Oracle (reward reference, same as E139)

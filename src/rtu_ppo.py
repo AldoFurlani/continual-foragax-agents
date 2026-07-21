@@ -1122,15 +1122,19 @@ def experiment(rng, config: TrainConfig):
     _is_plain_conv_rtu = _agent_class is RealTimeActorCriticConv
     _is_conv_hint_rtu = _agent_class is RealTimeActorCriticConvHintRTU
     _is_stacked_rtu = _agent_class is RealTimeActorCriticMLPStacked
+    _is_multi_rtu = _agent_class is RealTimeActorCriticMLPMulti
     _is_mlp_rtu = _agent_class in (
         RealTimeActorCriticMLP,
-        RealTimeActorCriticMLPMulti,
         ActorCriticMLP,
     )
     activation_multiplier = 2 if config.activation == "crelu" else 1
     if _is_stacked_rtu:
         # Every block's RTU reads the LayerNorm'd width-W stream (W = hidden_size);
         # action/reward are folded into the stream by the input projection.
+        d_input = config.hidden_size
+    elif _is_multi_rtu:
+        # Both RTUs read a width-hidden_size vector (obs embedding sized to
+        # obs_hidden_size, then action/reward re-concatenated before each RTU).
         d_input = config.hidden_size
     elif _is_plain_conv_rtu:
         # RTU receives [conv Dense(hidden_size), action, last_reward+hint, ...]

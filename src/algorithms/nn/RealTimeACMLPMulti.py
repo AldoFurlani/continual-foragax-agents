@@ -1,12 +1,11 @@
 # Modified from esraaelelimy/continuing_ppo
+import distrax
 import flax.linen as nn
-from typing import Optional, Tuple, Union, Any, Sequence, Dict
-from flax.linen.initializers import constant, orthogonal
 import jax.numpy as jnp
 import numpy as np
-import distrax
-import functools
-from algorithms.nn.rtus.rtus import *
+from flax.linen.initializers import constant, orthogonal
+
+from algorithms.nn.rtus.rtus import RTLRTUs, RTNLRTUs
 
 
 class RealTimeActorCriticMLPMulti(nn.Module):
@@ -18,6 +17,7 @@ class RealTimeActorCriticMLPMulti(nn.Module):
     rtu_type: str = "linear_rtu"
     use_sinusoidal_encoding: bool = False
     use_reward_trace: bool = False
+    use_layernorm: bool = False
 
     @nn.compact
     def __call__(self, hidden, obs):
@@ -63,6 +63,8 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="actor_dense1",
         )(obs)
+        if self.use_layernorm:
+            actor_embedding = nn.LayerNorm(name="actor_layernorm1")(actor_embedding)
         actor_embedding = activation(actor_embedding)
         actor_embedding = jnp.concatenate(
             (actor_embedding, last_action_encoded, last_reward_plus), axis=-1
@@ -75,6 +77,8 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="critic_dense1",
         )(obs)
+        if self.use_layernorm:
+            critic_embedding = nn.LayerNorm(name="critic_layernorm1")(critic_embedding)
         critic_embedding = activation(critic_embedding)
         critic_embedding = jnp.concatenate(
             (critic_embedding, last_action_encoded, last_reward_plus), axis=-1
@@ -100,7 +104,14 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="actor_dense2",
         )(actor_embedding)
+        if self.use_layernorm:
+            actor_embedding = nn.LayerNorm(name="actor_layernorm2")(actor_embedding)
         actor_embedding = activation(actor_embedding)
+        # Re-concat action/reward (as before RTU1) so RTU2's input width matches
+        # RTU1's (== hidden_size); keeps the per-layer RTRL trace shapes uniform.
+        actor_embedding = jnp.concatenate(
+            (actor_embedding, last_action_encoded, last_reward_plus), axis=-1
+        )
         actor_embedding_skip = actor_embedding
         critic_embedding = nn.Dense(
             obs_hidden_size,
@@ -108,7 +119,12 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="critic_dense2",
         )(critic_embedding)
+        if self.use_layernorm:
+            critic_embedding = nn.LayerNorm(name="critic_layernorm2")(critic_embedding)
         critic_embedding = activation(critic_embedding)
+        critic_embedding = jnp.concatenate(
+            (critic_embedding, last_action_encoded, last_reward_plus), axis=-1
+        )
         critic_embedding_skip = critic_embedding
 
         actor_hidden2, actor_embedding = seq_model(
@@ -130,6 +146,8 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="actor_dense3",
         )(actor_embedding)
+        if self.use_layernorm:
+            actor_mean = nn.LayerNorm(name="actor_layernorm3")(actor_mean)
         actor_mean = activation(actor_mean)
         actor_mean = nn.Dense(
             self.action_dim,
@@ -152,6 +170,8 @@ class RealTimeActorCriticMLPMulti(nn.Module):
             bias_init=constant(0.0),
             name="critic_dense3",
         )(critic_embedding)
+        if self.use_layernorm:
+            critic = nn.LayerNorm(name="critic_layernorm3")(critic)
         critic = activation(critic)
         critic = nn.Dense(
             1, kernel_init=orthogonal(1.0), bias_init=constant(0.0), name="critic_value"

@@ -40,7 +40,7 @@
         },
         "representation": {
             "hidden": 64,
-            "d_hidden": 192,
+            "d_hidden": 512,
             "activation": "tanh",
             "n_blocks": 1,
             "use_gating": false
