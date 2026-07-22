@@ -71,6 +71,7 @@ LABEL_MAP: Dict[str, str] = {
     "ActorCriticMLP-shrink-and-perturb": "PPO (S&P)",
     "RealTimeActorCriticMLP": "RTU-PPO",
     "RealTimeActorCriticMLPReLU": "RTU-PPO (ReLU)",
+    "RealTimeActorCriticMLPMulti": "RTU-PPO (Multi)",
     "RealTimeActorCriticMLP-l2": "RTU-PPO (L2)",
     "PPO-RTU": "RTU-PPO",
     "PPO-RTU_128": "RTU-PPO",
