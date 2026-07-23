@@ -21,7 +21,7 @@
         "gradient_clipping": true,
         "max_grad_norm": 0.5,
         "vf_coef": 0.5,
-        "entropy_coef": 0.01,
+        "entropy_coef": 0.1,
         "optimizer_actor": {
             "name": "Adam",
             "alpha": 0.001,
@@ -31,7 +31,7 @@
         },
         "optimizer_critic": {
             "name": "Adam",
-            "lr_scale": 0.1,
+            "lr_scale": 10.0,
             "beta1": 0.9,
             "beta2": 0.999,
             "eps": 1e-05
