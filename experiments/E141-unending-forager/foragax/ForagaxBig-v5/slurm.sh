@@ -24,3 +24,11 @@ for fov in 9; do
         --entry src/rtu_ppo.py \
         -e "$EV/${fov}/RealTimeActorCriticConvMulti.json"
 done
+
+# Search-Oracle reward ceiling (privileged current-reward info; cf. paper Fig 7).
+# CPU-only, non-learning -- runs via continuing_main.py, no aperture (world mode).
+python scripts/slurm.py \
+    --cluster clusters/vulcan-cpu-16G.json \
+    --time 09:00:00 --runs 30 --force \
+    --entry src/continuing_main.py \
+    -e "$EV/Baselines/Search-Oracle.json"

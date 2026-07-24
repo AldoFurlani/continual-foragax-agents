@@ -11,7 +11,8 @@
 set -e
 
 EXP=experiments/E141-unending-forager/foragax/ForagaxBig-v5
-ALGS="RealTimeActorCriticConv:9 RealTimeActorCriticConvMulti:9"
+# Search-Oracle has no aperture (world mode) -> no :9 suffix.
+ALGS="Search-Oracle RealTimeActorCriticConv:9 RealTimeActorCriticConvMulti:9"
 
 # No per-switch vertical lines (unending task -- switches are behaviour-driven).
 # ylim 0.35 matches the paper's Fig 7 average-reward scale (~0-0.3).
