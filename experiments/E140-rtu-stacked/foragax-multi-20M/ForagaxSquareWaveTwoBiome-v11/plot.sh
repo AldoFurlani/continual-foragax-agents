@@ -16,18 +16,15 @@ EXP=experiments/E140-rtu-stacked/foragax-multi-20M/ForagaxSquareWaveTwoBiome-v11
 ENV=ForagaxSquareWaveTwoBiome-v11
 ALGS="RealTimeActorCriticMLP:9 RealTimeActorCriticMLPMulti:9"
 
-# Reward switches every 250k steps (square wave: half of the 500k period).
-# %.0f so macOS/BSD seq emits plain integers (default %g renders 1e+06).
+# No per-switch vertical lines: at this timescale (up to ~199 switches at 50M)
+# they read as a field of dots. The curve's own oscillation shows the switching.
 plot_window() {
     local end_frame=$1 label=$2
-    local switches
-    switches=$(seq -f "%.0f" 250000 250000 "$((end_frame - 250000))")
     python src/learning_curve.py "$EXP" \
         --metrics ewm_reward \
         --filter-alg-apertures $ALGS \
         --end-frame "$end_frame" \
         --plot-name "${ENV}_ewm_reward_curve_${label}" \
-        --vertical-lines $switches \
         --legend-on-bar \
         --plot-avg \
         --horizontal-bars \
