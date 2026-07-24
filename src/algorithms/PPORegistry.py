@@ -2,6 +2,7 @@ from algorithms.nn.ACConv import ActorCriticConv
 from algorithms.nn.ACMLP import ActorCriticMLP
 from algorithms.nn.ESMAC import ESMAC
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
+from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
 from algorithms.nn.RealTimeACConvHint import RealTimeActorCriticConvHint
 from algorithms.nn.RealTimeACConvHintRTU import RealTimeActorCriticConvHintRTU
 from algorithms.nn.RealTimeACConvPooling import RealTimeActorCriticConvPooling
@@ -19,6 +20,10 @@ def getAgent(name):
 
     if name.startswith("RealTimeActorCriticConvHint"):
         return RealTimeActorCriticConvHint
+
+    # Must precede the generic RealTimeActorCriticConv prefix check.
+    if name.startswith("RealTimeActorCriticConvMulti"):
+        return RealTimeActorCriticConvMulti
 
     if name.startswith("RealTimeActorCriticConv"):
         return RealTimeActorCriticConv

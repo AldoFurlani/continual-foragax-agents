@@ -32,6 +32,7 @@ import utils.jax_compat  # noqa: F401
 from algorithms.nn.ACConv import ActorCriticConv
 from algorithms.nn.ACMLP import ActorCriticMLP
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
+from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
 from algorithms.nn.RealTimeACConvHint import RealTimeActorCriticConvHint
 from algorithms.nn.RealTimeACConvHintRTU import RealTimeActorCriticConvHintRTU
 from algorithms.nn.RealTimeACConvPooling import RealTimeActorCriticConvPooling
@@ -1067,6 +1068,7 @@ def experiment(rng, config: TrainConfig):
     if _agent_class in (
         ActorCriticConv,
         RealTimeActorCriticConv,
+        RealTimeActorCriticConvMulti,
         RealTimeActorCriticConvPooling,
         RealTimeActorCriticConvHint,
         RealTimeActorCriticConvHintRTU,
@@ -1122,7 +1124,11 @@ def experiment(rng, config: TrainConfig):
     _is_plain_conv_rtu = _agent_class is RealTimeActorCriticConv
     _is_conv_hint_rtu = _agent_class is RealTimeActorCriticConvHintRTU
     _is_stacked_rtu = _agent_class is RealTimeActorCriticMLPStacked
-    _is_multi_rtu = _agent_class is RealTimeActorCriticMLPMulti
+    # Conv-Multi shares MLPMulti's 4-RTU carry and width-hidden_size RTU input.
+    _is_multi_rtu = _agent_class in (
+        RealTimeActorCriticMLPMulti,
+        RealTimeActorCriticConvMulti,
+    )
     _is_mlp_rtu = _agent_class in (
         RealTimeActorCriticMLP,
         ActorCriticMLP,
