@@ -9,6 +9,11 @@
 #
 # To run ONLY the Multi baseline, use slurm_multi.sh instead.
 #
+# Hypers for all four arms come from the 1M sweep in ../../foragax-sweep/ (run its
+# slurm.sh, then process_data_job.sh, then process_hypers.sh, which writes the
+# selected cell into the 9/*.json configs here). Re-run this script after any
+# re-selection so the 10M results match the configs.
+#
 # NOTE: compute_plasticity is OFF in the configs -- the stacked class is not yet
 # in _PROBED_CLASSES, so plasticity metrics would be a silent no-op. This run is
 # reward-curves only. Flip compute_plasticity to true once the per-block probes
