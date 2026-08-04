@@ -1,7 +1,7 @@
 {
     "agent": "RealTimeActorCriticMLPStacked4",
     "problem": "Foragax",
-    "total_steps": 10000000,
+    "total_steps": 30000000,
     "metaParameters": {
         "environment": {
             "env_id": "ForagaxSquareWaveTwoBiome-v11",
@@ -12,7 +12,8 @@
             "seed_offset": 0,
             "compute_plasticity": false,
             "persist_decay": 0.99,
-            "sat_persist_threshold": 0.95
+            "sat_persist_threshold": 0.95,
+            "r_stats_freq": 2048
         },
         "gamma": 0.99,
         "gae_lambda": 0.95,

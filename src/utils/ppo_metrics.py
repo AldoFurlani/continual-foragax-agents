@@ -102,8 +102,12 @@ def weight_drift(
     )
     sq_leaves = jax.tree_util.tree_leaves(sqdiff)
     lbl_leaves = jax.tree_util.tree_leaves(labels)
-    pi_sq = sum((s for s, l in zip(sq_leaves, lbl_leaves) if l == "pi"), 0.0)
-    vf_sq = sum((s for s, l in zip(sq_leaves, lbl_leaves) if l == "vf"), 0.0)
+    pi_sq = sum(
+        (s for s, lbl in zip(sq_leaves, lbl_leaves, strict=False) if lbl == "pi"), 0.0
+    )
+    vf_sq = sum(
+        (s for s, lbl in zip(sq_leaves, lbl_leaves, strict=False) if lbl == "vf"), 0.0
+    )
     total_sq = sum(sq_leaves, 0.0)
     return jnp.sqrt(pi_sq), jnp.sqrt(vf_sq), jnp.sqrt(total_sq)
 
@@ -256,7 +260,8 @@ def value_metrics(
     leaves_before = jax.tree_util.tree_leaves(params_before)
     leaves_after = jax.tree_util.tree_leaves(params_after)
     delta_leaves = [
-        jnp.sum(jnp.square(a - b)) for a, b in zip(leaves_after, leaves_before)
+        jnp.sum(jnp.square(a - b))
+        for a, b in zip(leaves_after, leaves_before, strict=False)
     ]
     weight_update_norm = jnp.sqrt(sum(delta_leaves, 0.0))
 
@@ -319,7 +324,8 @@ def policy_metrics(
     leaves_before = jax.tree_util.tree_leaves(params_before)
     leaves_after = jax.tree_util.tree_leaves(params_after)
     delta_leaves = [
-        jnp.sum(jnp.square(a - b)) for a, b in zip(leaves_after, leaves_before)
+        jnp.sum(jnp.square(a - b))
+        for a, b in zip(leaves_after, leaves_before, strict=False)
     ]
     weight_update_norm = jnp.sqrt(sum(delta_leaves, 0.0))
 
@@ -405,3 +411,51 @@ def nan_ppo_metrics() -> Tuple[jnp.ndarray, ...]:
     """The all-``NaN`` NTK / churn metric tuple emitted on non-metric updates."""
     nan = jnp.float32(jnp.nan)
     return nan, nan, nan, nan, nan, nan, nan, nan
+
+
+def rtu_r_stats(params: Any, params_type: str = "exp_exp") -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Mean and max spectral radius ``r`` over every RTU diagonal in ``params``.
+
+    Each RTU unit's recurrence is a scaled rotation with ``g = r*cos(theta)`` and
+    ``phi = r*sin(theta)``, so ``r = hypot(g, phi)`` recovers the pole magnitude
+    regardless of which reparameterization (``direct`` / ``exp`` / ``exp_exp``
+    / ...) produced it.  ``r`` sets the unit's memory horizon: the effective time
+    constant is ``tau = -1 / ln(r)`` steps, so ``r -> 1`` is long memory and
+    ``r -> 0`` is one-step memory.
+
+    Every ``r_param`` leaf in the tree is included, so this aggregates over all
+    blocks and over both the actor and critic branches -- the depth of the stack
+    does not change the shape of the output.
+
+    Args:
+        params: A Flax parameter tree containing one or more RTU cells.
+        params_type: The RTU reparameterization, used to map the raw
+            ``r_param`` / ``theta_param`` leaves to ``(g, phi)``.
+
+    Returns:
+        ``(r_mean, r_max)`` as scalar arrays.  Both are ``NaN`` when the tree
+        holds no RTU cell (e.g. a non-recurrent baseline agent).
+    """
+    from algorithms.nn.rtus.rtus_utils import g_phi_options
+
+    g_phi = g_phi_options[params_type]
+    radii = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "r_param" in node and "theta_param" in node:
+                g, phi, _ = g_phi(node["r_param"], node["theta_param"])
+                radii.append(jnp.ravel(jnp.hypot(g, phi)))
+            for child in node.values():
+                walk(child)
+
+    walk(params)
+    if not radii:
+        return jnp.float32(jnp.nan), jnp.float32(jnp.nan)
+    all_r = jnp.concatenate(radii)
+    return jnp.mean(all_r), jnp.max(all_r)
+
+
+def nan_rtu_r_stats() -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """The ``NaN`` pair emitted on non-metric updates / when disabled."""
+    return jnp.float32(jnp.nan), jnp.float32(jnp.nan)

@@ -1,5 +1,5 @@
 {
-    "agent": "RealTimeActorCriticMLPStacked1",
+    "agent": "RealTimeActorCriticMLP",
     "problem": "Foragax",
     "total_steps": 30000000,
     "metaParameters": {
@@ -11,8 +11,6 @@
         "experiment": {
             "seed_offset": 0,
             "compute_plasticity": false,
-            "persist_decay": 0.99,
-            "sat_persist_threshold": 0.95,
             "r_stats_freq": 2048
         },
         "gamma": 0.99,
@@ -24,17 +22,17 @@
         "gradient_clipping": true,
         "max_grad_norm": 0.5,
         "vf_coef": 0.5,
-        "entropy_coef": 0.01,
+        "entropy_coef": 0.1,
         "optimizer_actor": {
             "name": "Adam",
-            "alpha": 0.001,
+            "alpha": 0.0003,
             "beta1": 0.9,
             "beta2": 0.999,
             "eps": 1e-05
         },
         "optimizer_critic": {
             "name": "Adam",
-            "lr_scale": 0.1,
+            "lr_scale": 10.0,
             "beta1": 0.9,
             "beta2": 0.999,
             "eps": 1e-05
@@ -42,9 +40,7 @@
         "representation": {
             "hidden": 64,
             "d_hidden": 512,
-            "activation": "tanh",
-            "n_blocks": 1,
-            "use_gating": false
+            "use_layernorm": true
         }
     }
 }

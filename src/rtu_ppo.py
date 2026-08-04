@@ -47,8 +47,10 @@ from utils.ml_instrumentation.utils import Last
 from utils.ppo_metrics import (
     compute_ppo_metrics,
     nan_ppo_metrics,
+    nan_rtu_r_stats,
     nan_weight_drift,
     nan_weight_norm,
+    rtu_r_stats,
     weight_drift,
     weight_norm,
 )
@@ -138,6 +140,11 @@ class TrainConfig:
     # Weight-norm metric -- independent cadence / flag from the NTK metrics above
     compute_weight_norm: bool = struct.field(pytree_node=False)
     weight_norm_freq: int = struct.field(pytree_node=False)
+    # RTU spectral-radius (r) stats -- mean/max pole magnitude over every RTU
+    # diagonal, i.e. how long a memory the recurrence has actually learned.
+    # Independent cadence / flag; works at any stack depth.
+    compute_r_stats: bool = struct.field(pytree_node=False)
+    r_stats_freq: int = struct.field(pytree_node=False)
     # Weight-drift metric (||theta - theta_0||, split pi/vf/total) -- independent
     # cadence / flag; the diagnostic counterpart to L2-to-init ("w0") reg.
     compute_weight_drift: bool = struct.field(pytree_node=False)
@@ -1751,6 +1758,25 @@ def experiment(rng, config: TrainConfig):
         else:
             weight_norm_metric = nan_weight_norm()
 
+        # RTU spectral radius: mean / max of r = hypot(g, phi) over every RTU
+        # diagonal in the post-update params (all blocks, actor + critic).  r is
+        # the per-unit pole magnitude, so tau = -1/ln(r) is the memory horizon in
+        # steps -- this tracks how long a dependency the recurrence has learned to
+        # hold.  Pure elementwise reduction over two small leaves per RTU, so it
+        # is cheaper than the weight norm.  NaN pair when disabled / off-cadence.
+        if config.compute_r_stats:
+            is_r_step = _crossed_interval(
+                start_timestep, log_env_state.timestep, config.r_stats_freq
+            )
+            r_mean_metric, r_max_metric = jax.lax.cond(
+                is_r_step,
+                lambda _: rtu_r_stats(ntk_params_after),
+                lambda _: nan_rtu_r_stats(),
+                operand=None,
+            )
+        else:
+            r_mean_metric, r_max_metric = nan_rtu_r_stats()
+
         # Weight drift: ||theta - theta_0|| (split pi / vf / total), gated on its
         # own weight_drift_freq.  Like the weight norm it is a pure L2 reduction
         # over the post-update params -- here against the frozen theta_0 closure
@@ -1825,6 +1851,7 @@ def experiment(rng, config: TrainConfig):
             grad_norms,
             ntk_metrics,
             weight_norm_metric,
+            (r_mean_metric, r_max_metric),
             weight_drift_metric,
         )
 
@@ -1848,6 +1875,7 @@ def experiment(rng, config: TrainConfig):
         grad_norms,
         ntk_metrics,
         weight_norm_metric,
+        (r_mean_metric, r_max_metric),
         weight_drift_metric,
     ) = info
     rewards = rewards.reshape((-1))
@@ -1903,6 +1931,7 @@ def experiment(rng, config: TrainConfig):
             policy_churn,
         ),
         weight_norm_metric,
+        (r_mean_metric, r_max_metric),
         (weight_drift_pi, weight_drift_vf, weight_drift_total),
         frames,
         grad_norms,
@@ -2024,6 +2053,9 @@ def main():
         # experiment.weight_norm_freq (env steps, rounded up to rollout_steps).
         weight_norm_freq = int(hypers.get("experiment", {}).get("weight_norm_freq", 0))
         compute_weight_norm = weight_norm_freq > 0
+        # experiment.r_stats_freq (env steps, rounded up to rollout_steps).
+        r_stats_freq = int(hypers.get("experiment", {}).get("r_stats_freq", 0))
+        compute_r_stats = r_stats_freq > 0
         # Weight drift (||theta - theta_0||): independent of the NTK / weight-norm
         # metrics, controlled by its own experiment.weight_drift_freq (env steps,
         # rounded up to rollout_steps).
@@ -2158,6 +2190,8 @@ def main():
             chunked_ref=chunked_ref,
             compute_weight_norm=compute_weight_norm,
             weight_norm_freq=max(weight_norm_freq, 1),
+            compute_r_stats=compute_r_stats,
+            r_stats_freq=max(r_stats_freq, 1),
             compute_weight_drift=compute_weight_drift,
             weight_drift_freq=max(weight_drift_freq, 1),
             compute_plasticity=bool(
@@ -2190,6 +2224,7 @@ def main():
             policy_churn,
         ),
         weight_norm_metric,
+        (r_mean_metric, r_max_metric),
         (weight_drift_pi, weight_drift_vf, weight_drift_total),
         frames,
         grad_norms,
@@ -2231,6 +2266,8 @@ def main():
         run_policy_ntk_cond = policy_ntk_cond[i]
         run_policy_churn = policy_churn[i]
         run_weight_norm = weight_norm_metric[i]
+        run_r_mean = r_mean_metric[i]
+        run_r_max = r_max_metric[i]
         run_weight_drift_pi = weight_drift_pi[i]
         run_weight_drift_vf = weight_drift_vf[i]
         run_weight_drift_total = weight_drift_total[i]
@@ -2302,6 +2339,8 @@ def main():
             policy_ntk_cond=run_policy_ntk_cond,
             policy_churn=run_policy_churn,
             weight_norm=run_weight_norm,
+            rtu_r_mean=run_r_mean,
+            rtu_r_max=run_r_max,
             weight_drift_pi=run_weight_drift_pi,
             weight_drift_vf=run_weight_drift_vf,
             weight_drift_total=run_weight_drift_total,

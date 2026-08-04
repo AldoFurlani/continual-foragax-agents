@@ -32,7 +32,7 @@ def process_alg_result(alg_result: Result, group, aperture):
 
     exp_path = Path(alg_result.exp_path)
     env = exp_path.parent.parent.name
-    targets = [0, 1_000_000, 5_000_000, 10_000_000]
+    targets = [0, 1_000_000, 5_000_000, 10_000_000, 30_000_000]
     intervals = [1_000, 10_000, 100_000, 500_000, 1_000_000]
     n_samples = 500
 
@@ -113,7 +113,7 @@ def main(experiment_path: Path):
     # collection (e.g. a config gained a hyperparameter between runs), which
     # would otherwise double every row and silently tighten CIs. Keep the last
     # (most recent) per natural key.
-    key = ["env", "group", "alg", "aperture", "seed", "frame", "sample_type"]
+    key = ["env", "group", "alg", "aperture", "id", "seed", "frame", "sample_type"]
     key = [c for c in key if c in all_df.columns]
     before = all_df.height
     all_df = all_df.unique(subset=key, keep="last", maintain_order=True)

@@ -8,19 +8,37 @@ EXP=experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11
 
 # Reward switches every 250k steps (square wave: half of the 500k period).
 # %.0f so macOS/BSD seq emits plain integers (default %g renders 1e+06).
-SWITCHES=$(seq -f "%.0f" 250000 250000 9750000)
+# NOTE: if you paste this into an interactive zsh prompt, make it an array --
+# zsh does not word-split an unquoted $SWITCHES the way bash does.
+SWITCHES=$(seq -f "%.0f" 250000 250000 29750000)
 
-# Reward curve: the depth ablation (L1 vs L2 vs L4) overlaid, with the oracle
-# reference. This is the primary E140 figure -- "does stacking depth help".
+# Reward curve at 30M: the depth ablation (L1 vs L2 vs L4) against plain
+# RTU-PPO (single non-residual RTU) and the oracle reference. Primary E140
+# figure -- "does the residual block help, and does depth help".
+# Multi is deliberately excluded: it is still a 10M run and would stop a third
+# of the way across the x-axis.
 python src/learning_curve.py "$EXP" \
     --metrics ewm_reward \
-    --filter-alg-apertures Search-Oracle RealTimeActorCriticMLPStacked1:9 RealTimeActorCriticMLPStacked2:9 RealTimeActorCriticMLPStacked4:9 \
-    --end-frame 10000000 \
+    --filter-alg-apertures Search-Oracle RealTimeActorCriticMLP:9 RealTimeActorCriticMLPStacked1:9 RealTimeActorCriticMLPStacked2:9 RealTimeActorCriticMLPStacked4:9 \
+    --end-frame 30000000 \
     --vertical-lines $SWITCHES \
     --legend-on-bar \
     --plot-avg \
     --horizontal-bars \
     --ylim 2.2
+
+# Learned RTU memory horizon. rtu_r_mean / rtu_r_max are the mean and max
+# spectral radius r over every RTU diagonal (both branches, all blocks), logged
+# every rollout via experiment.r_stats_freq. r sets the per-unit memory horizon:
+# tau = -1/ln(r) steps, so r -> 1 is long memory. At init r_mean ~ 0.67
+# (tau ~ 2.5 steps) and r_max ~ 0.9999 (tau ~ 15k steps); the question is
+# whether training moves either, and whether depth changes that.
+python src/learning_curve.py "$EXP" \
+    --metrics rtu_r_mean rtu_r_max \
+    --filter-alg-apertures RealTimeActorCriticMLP:9 RealTimeActorCriticMLPStacked1:9 RealTimeActorCriticMLPStacked2:9 RealTimeActorCriticMLPStacked4:9 \
+    --end-frame 30000000 \
+    --plot-name ForagaxSquareWaveTwoBiome-v11_rtu_spectral_radius \
+    --legend
 
 # Plasticity-vs-depth figures. DISABLED until the stacked class carries per-block
 # probes (add it to _PROBED_CLASSES and generalize the metric sites in
