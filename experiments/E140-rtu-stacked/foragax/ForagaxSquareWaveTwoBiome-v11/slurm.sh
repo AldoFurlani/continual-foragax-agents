@@ -83,6 +83,11 @@ for fov in 9; do
 done
 
 # Search-Oracle (reward reference, same as E139), now 30M -- 3x the CPU work.
+# save_every=30_001_000 in the config disables the periodic checkpoint: it
+# pickles the glue state, and JAX's typed PRNGKeyArray is not picklable, so any
+# run reaching a milestone dies with TypeError. The default (10_001_000) was
+# unreachable at 10M but fires twice at 30M. The oracle is ~1h of CPU inside a
+# 3h walltime, so losing checkpointing costs nothing here.
 python scripts/slurm.py \
     --cluster clusters/vulcan-cpu.json \
     --time 03:00:00 --runs 30 --force \
