@@ -82,19 +82,13 @@ for fov in 9; do
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPMulti.json
 done
 
-# Search-Oracle (reward reference, same as E139). Deliberately left at 10M: it
-# is a fixed policy, so its reward is stationary and 30M would add nothing but
-# CPU hours. Its existing 30-seed results are reused -- do NOT clear them, or
-# this re-runs for no reason. Consequence: on the 30M figure the oracle line
-# stops at 10M; use plot.sh's --horizontal-lines if you want a full-width
-# reference instead.
+# Search-Oracle is NOT run here. It is a fixed policy, so its reward is
+# stationary (mean ewm_reward 1.61 over 30 seeds, p10 1.37 / p90 1.87) and a
+# 30M -- or even a repeat 10M -- run adds nothing. plot.sh draws it as a
+# horizontal reference line instead, which also spans the full 30M x-axis
+# rather than stopping a third of the way across.
 #
-# Do not raise total_steps here without also setting experiment.save_every above
-# it: the periodic checkpoint pickles the glue state, and JAX's typed
-# PRNGKeyArray is not picklable, so any run past save_every (default 10_001_000)
-# dies with TypeError. Unreachable at 10M, fires twice at 30M.
-python scripts/slurm.py \
-    --cluster clusters/vulcan-cpu.json \
-    --time 01:00:00 --runs 30 --force \
-    --entry src/continuing_main.py \
-    -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/Baselines/Search-Oracle.json
+# If you ever do re-run it, note that raising total_steps above
+# experiment.save_every (default 10_001_000) crashes: the periodic checkpoint
+# pickles the glue state and JAX's typed PRNGKeyArray is not picklable. Set
+# save_every above total_steps first.

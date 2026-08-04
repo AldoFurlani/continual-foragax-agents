@@ -16,12 +16,16 @@ SWITCHES=$(seq -f "%.0f" 250000 250000 29750000)
 # RTU-PPO (single non-residual RTU) and the oracle reference. Primary E140
 # figure -- "does the residual block help, and does depth help".
 # Multi is deliberately excluded: it is still a 10M run and would stop a third
-# of the way across the x-axis.
+# of the way across the x-axis. The oracle is drawn as a horizontal line rather
+# than a curve -- it is a fixed policy, so its reward is stationary (1.61 mean
+# over 30 seeds, p10 1.37 / p90 1.87, measured from the 10M runs); this spans
+# the full 30M axis and costs no compute.
 python src/learning_curve.py "$EXP" \
     --metrics ewm_reward \
-    --filter-alg-apertures Search-Oracle RealTimeActorCriticMLP:9 RealTimeActorCriticMLPStacked1:9 RealTimeActorCriticMLPStacked2:9 RealTimeActorCriticMLPStacked4:9 \
+    --filter-alg-apertures RealTimeActorCriticMLP:9 RealTimeActorCriticMLPStacked1:9 RealTimeActorCriticMLPStacked2:9 RealTimeActorCriticMLPStacked4:9 \
     --end-frame 30000000 \
     --vertical-lines $SWITCHES \
+    --horizontal-lines 1.61:Search-Oracle \
     --legend-on-bar \
     --plot-avg \
     --horizontal-bars \
