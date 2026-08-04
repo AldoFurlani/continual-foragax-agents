@@ -88,7 +88,15 @@ done
 # horizontal reference line instead, which also spans the full 30M x-axis
 # rather than stopping a third of the way across.
 #
-# If you ever do re-run it, note that raising total_steps above
-# experiment.save_every (default 10_001_000) crashes: the periodic checkpoint
-# pickles the glue state and JAX's typed PRNGKeyArray is not picklable. Set
-# save_every above total_steps first.
+# To bring it back, uncomment the block below -- the config is unchanged from
+# the version that produced the original 30-seed results, so it just works.
+# But note: raising its total_steps above experiment.save_every (default
+# 10_001_000) crashes, because the periodic checkpoint pickles the glue state
+# and JAX's typed PRNGKeyArray is not picklable. Set save_every above
+# total_steps first if you ever want a longer oracle.
+#
+# python scripts/slurm.py \
+#     --cluster clusters/vulcan-cpu.json \
+#     --time 01:00:00 --runs 30 --force \
+#     --entry src/continuing_main.py \
+#     -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/Baselines/Search-Oracle.json
