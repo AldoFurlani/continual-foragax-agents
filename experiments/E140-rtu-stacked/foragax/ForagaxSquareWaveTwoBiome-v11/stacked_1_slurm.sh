@@ -13,7 +13,7 @@
 # NOTE: compute_plasticity is OFF in the config -- the stacked class is not yet
 # in _PROBED_CLASSES, so plasticity metrics would be a silent no-op.
 #
-# 30M is 3x the 10M walltime (~6h -> ~18h at --tasks 5); --time 24:00:00 leaves
+# 30M is 3x the 10M walltime (~6h -> ~18h at --tasks 5); --time 12:00:00 leaves
 # headroom. Per-step GPU memory is horizon-independent, so --tasks 5 still fits.
 # scripts/slurm.py is idempotent -- re-run after timeouts to fill missing seeds
 # (rtu_ppo checkpoints on cancel, so a timed-out seed resumes rather than restarts).
@@ -23,7 +23,7 @@ EXP=experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11
 for fov in 9; do
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 4 --time 24:00:00 --runs 30 --force \
+        --tasks 4 --time 12:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e "$EXP/${fov}/RealTimeActorCriticMLPStacked1.json"
 done

@@ -32,28 +32,28 @@ for fov in 9; do
     # Multi RTU-PPO (2 RTUs, concat idiom -- non-residual reference)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 2 --time 02:00:00 --runs 10 --force \
+        --tasks 2 --time 01:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
         -e "$SW/${fov}/RealTimeActorCriticMLPMulti.json"
 
     # Stacked RTU-PPO, depth 1 (within-family baseline)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 4 --time 02:00:00 --runs 10 --force \
+        --tasks 4 --time 01:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
         -e "$SW/${fov}/RealTimeActorCriticMLPStacked1.json"
 
     # Stacked RTU-PPO, depth 2 (RTU count matched to Multi)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 2 --time 02:00:00 --runs 10 --force \
+        --tasks 2 --time 01:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
         -e "$SW/${fov}/RealTimeActorCriticMLPStacked2.json"
 
     # Stacked RTU-PPO, depth 4 (matches Lu et al. S5-in-PPO depth)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 1 --time 03:00:00 --runs 10 --force \
+        --tasks 1 --time 01:30:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
         -e "$SW/${fov}/RealTimeActorCriticMLPStacked4.json"
 done
