@@ -29,8 +29,14 @@
 # reward-curves only. Flip compute_plasticity to true once the per-block probes
 # are wired (then the plasticity block in plot.sh applies).
 #
-# 30M is 3x the 10M walltime (~6h -> ~18h at --tasks 5); --time 24:00:00 leaves
-# headroom. Per-step GPU memory is horizon-independent, so --tasks 5 still fits.
+# 30M is 3x the 10M walltime (~6h -> ~18h); --time 24:00:00 leaves headroom.
+#
+# --tasks is scaled inversely with depth: the stored RTRL traces are ~1 GiB per
+# RTU per vmapped run (4 tensors of 2048 x 64 x 512 f32, stacked over the
+# rollout by lax.scan), and an agent has 2*n_blocks RTUs. --tasks 5 OOM'd
+# Stacked4 on a 40 GiB card, asking for 82 GiB. Memory is horizon-independent,
+# so the same widths hold at 1M and 30M.
+#
 # If the partition caps below 24h, rely on rtu_ppo's Checkpoint -- re-running
 # this script is idempotent and resumes unfinished seeds.
 
@@ -38,21 +44,21 @@ for fov in 9; do
     # Stacked RTU-PPO, depth 1 (within-family baseline)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 24:00:00 --runs 30 --force \
+        --tasks 4 --time 24:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPStacked1.json
 
     # Stacked RTU-PPO, depth 2
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 24:00:00 --runs 30 --force \
+        --tasks 2 --time 24:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPStacked2.json
 
     # Stacked RTU-PPO, depth 4 (matches Lu et al. S5-in-PPO depth)
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 24:00:00 --runs 30 --force \
+        --tasks 1 --time 24:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLPStacked4.json
 
@@ -63,7 +69,7 @@ for fov in 9; do
     # than the E139 10M one.
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 24:00:00 --runs 30 --force \
+        --tasks 4 --time 24:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/RealTimeActorCriticMLP.json
 

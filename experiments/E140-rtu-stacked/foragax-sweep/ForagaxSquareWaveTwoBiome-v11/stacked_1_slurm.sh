@@ -21,7 +21,7 @@ SW=experiments/E140-rtu-stacked/foragax-sweep/ForagaxSquareWaveTwoBiome-v11
 for fov in 9; do
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 02:00:00 --runs 10 --force \
+        --tasks 4 --time 02:00:00 --runs 10 --force \
         --entry src/rtu_ppo.py \
         -e "$SW/${fov}/RealTimeActorCriticMLPStacked1.json"
 done

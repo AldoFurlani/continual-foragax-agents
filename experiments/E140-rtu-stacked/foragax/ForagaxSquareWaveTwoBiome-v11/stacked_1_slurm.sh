@@ -23,7 +23,7 @@ EXP=experiments/E140-rtu-stacked/foragax/ForagaxSquareWaveTwoBiome-v11
 for fov in 9; do
     python scripts/slurm.py \
         --cluster clusters/vulcan-gpu-vmap-32G.json \
-        --tasks 5 --time 24:00:00 --runs 30 --force \
+        --tasks 4 --time 24:00:00 --runs 30 --force \
         --entry src/rtu_ppo.py \
         -e "$EXP/${fov}/RealTimeActorCriticMLPStacked1.json"
 done
