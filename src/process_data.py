@@ -84,7 +84,9 @@ def main(experiment_path: Path):
         aperture = int(group) if group.isdigit() else None
 
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(_slurm_max_workers(), len(sub_results), 4)
+            # Cap was 4; the E140 aperture group now holds 5 algs (Stacked 1/2/4,
+            # plain RTU-PPO, Multi), so 4 left one alg serialised behind the rest.
+            max_workers=min(_slurm_max_workers(), len(sub_results), 8)
         ) as executor:
             futures = [
                 executor.submit(process_alg_result, alg_result, group, aperture)

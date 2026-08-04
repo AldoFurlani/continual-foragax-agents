@@ -4,7 +4,9 @@
 #SBATCH --mem-per-cpu=16G
 #SBATCH --ntasks=16
 #SBATCH --output=/scratch/%u/logs/slurm-%j.out
-#SBATCH --time=02:00:00
+# 30M runs: ~4x the 10M job (3x the timesteps, and targets now
+# includes 30M so sample_types went 46 -> 61). The 10M job took ~40 min.
+#SBATCH --time=06:00:00
 
 set -e
 
