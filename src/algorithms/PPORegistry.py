@@ -1,5 +1,7 @@
 from algorithms.nn.ACConv import ActorCriticConv
 from algorithms.nn.ACMLP import ActorCriticMLP
+from algorithms.nn.BPTTACConv import BPTTActorCriticConv
+from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
 from algorithms.nn.ESMAC import ESMAC
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
 from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
@@ -12,6 +14,16 @@ from algorithms.nn.RealTimeACMLPStacked import RealTimeActorCriticMLPStacked
 
 
 def getAgent(name):
+    # T-BPTT variants: same architectures as the RealTime* classes, but the RTU
+    # is unrolled over a `seq_len` time axis instead of stepped with the
+    # real-time RTRL cell.  Checked first -- their names share no prefix with
+    # the RealTime* family, so ordering here is for readability only.
+    if name.startswith("BPTTActorCriticConv"):
+        return BPTTActorCriticConv
+
+    if name.startswith("BPTTActorCriticMLP"):
+        return BPTTActorCriticMLP
+
     if name.startswith("RealTimeActorCriticConvPooling"):
         return RealTimeActorCriticConvPooling
 

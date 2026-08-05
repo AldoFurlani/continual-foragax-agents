@@ -31,6 +31,8 @@ from PyExpUtils.results.tools import getParamsAsDict
 import utils.jax_compat  # noqa: F401
 from algorithms.nn.ACConv import ActorCriticConv
 from algorithms.nn.ACMLP import ActorCriticMLP
+from algorithms.nn.BPTTACConv import BPTTActorCriticConv
+from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
 from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
 from algorithms.nn.RealTimeACConvHint import RealTimeActorCriticConvHint
@@ -108,6 +110,11 @@ class TrainConfig:
     rollout_steps: int = struct.field(pytree_node=False)
     epochs: int = struct.field(pytree_node=False)
     num_mini_batch: int = struct.field(pytree_node=False)
+    # T-BPTT truncation window (BPTTActorCritic* agents only): the rollout is
+    # cut into `rollout_steps // seq_len` contiguous chunks, and gradients flow
+    # across a chunk but stop at its first step.  Ignored by every other agent,
+    # for which the effective window is 1.
+    seq_len: int = struct.field(pytree_node=False)
     gradient_clipping: bool = struct.field(pytree_node=False)
     num_updates: int = struct.field(pytree_node=False)
     env_id: str = struct.field(pytree_node=False)
@@ -256,9 +263,17 @@ def _should_probe(config):
     return config.compute_plasticity and _is_probed(config.agent_type)
 
 
+def _agent_is_bptt(agent_type):
+    """T-BPTT agent: the network reads its two leading axes as
+    (seq_len, seq_batch) and unrolls the RTU with nn.scan, so one recurrent
+    state is supplied per sequence.  The RealTime* classes instead read a single
+    leading axis as a batch of independent timesteps, one stored carry each."""
+    return agent_type.startswith("BPTTActorCritic")
+
+
 def _agent_is_rtu(agent_type):
     """Recurrent (RTU) MLP agent vs the feedforward vanilla MLP."""
-    return agent_type.startswith("RealTime")
+    return agent_type.startswith("RealTime") or _agent_is_bptt(agent_type)
 
 
 def _wide_site_name(config):
@@ -753,6 +768,31 @@ def agent_step(last_obs, train_state, rng, hstate):
     return action, log_prob, value, last_hidden
 
 
+@jax.jit
+def agent_step_bptt(last_obs, train_state, rng, hstate):
+    """Acting step for T-BPTT agents.  Those networks read their two leading
+    axes as (seq_len, seq_batch), so a single environment step is presented as
+    a length-1 sequence with a batch of 1.  The returned carry is (1, d_hidden),
+    matching what the rollout scan threads and what a chunk start expects."""
+    last_obs, last_action_encoded, last_reward, sine, cosine, reward_trace = last_obs
+
+    def expand(x):
+        return jnp.expand_dims(jnp.expand_dims(x, 0), 0)
+
+    rnn_in = (
+        expand(last_obs),
+        expand(last_action_encoded),
+        expand(last_reward),
+        expand(sine),
+        expand(cosine),
+        expand(reward_trace),
+    )
+    last_hidden, pi, value = train_state.apply_fn(train_state.params, hstate, rnn_in)
+    action = pi.sample(seed=rng)
+    log_prob = pi.log_prob(action)
+    return action, log_prob, value, last_hidden
+
+
 def env_step(runner_state, _):
     (
         train_state,
@@ -803,7 +843,9 @@ def env_step(runner_state, _):
         reward_trace_encoded,
     )
 
-    action, log_prob, value, last_hidden = agent_step(
+    # `config.agent_type` is a static field, so this resolves at trace time.
+    _step_fn = agent_step_bptt if _agent_is_bptt(config.agent_type) else agent_step
+    action, log_prob, value, last_hidden = _step_fn(
         last_obs_encoded, train_state, _rng, hstate
     )
     # STEP ENV
@@ -896,21 +938,78 @@ def update_minbatch(carry_in, batch_info):
 
 
 """
-Batch shape = (num_steps, _)
-Divide the batch into n minibatches
-each minibatch has the shape of (seq_len, minibatch_size, _)
-minibatch_size = num_steps//n*seq_len
+Real-time minibatching (RealTime* agents).
 
-1. re-run the network through the batch and store hiddens states for positions (0,seq_len,2*seq_len,...)
-2. Divide num_steps into sequences of length seq_len : number of sequences = num_steps//seq_len
-3. Divide the sequences into n minibatches
-4. shuffle the minibatches
-output shape = (num_minibatches, seq_len, minibatch_size, _)
+Batch shape = (rollout_steps, _)
+Each timestep is an independent sample carrying its own stored recurrent state,
+so the steps are shuffled individually and dealt into num_mini_batch groups.
+There is no time axis: the network is applied once per step and the gradient
+path through the recurrence is supplied by the cell's RTRL sensitivities.
+output shape = (num_mini_batch, minibatch_size, _), minibatch_size = rollout_steps // num_mini_batch
+
+See create_seq_minibatches below for the T-BPTT counterpart, which chunks the
+rollout instead and keeps one carry per chunk.
+"""
+
+
+"""
+T-BPTT minibatching.
+
+Batch shape = (rollout_steps, _)
+1. Cut the rollout into n_seq = rollout_steps // seq_len CONTIGUOUS chunks.
+2. Keep only each chunk's FIRST recurrent state; the rest are recomputed by the
+   unroll, which is what makes the within-chunk gradient path exist at all.
+3. Shuffle the chunks (not the steps) and deal them into num_mini_batch groups.
+output shape = (num_mini_batch, seq_len, seq_batch, _), carries (num_mini_batch, seq_batch, _)
 """
 
 
 @jax.jit
+def create_seq_minibatches(config: TrainConfig, hstate_batch, batch, rng):
+    n_seq = config.rollout_steps // config.seq_len
+    seq_batch = n_seq // config.num_mini_batch
+    traj_batch, advantages, targets = batch
+
+    # (rollout_steps, 1, d) -> (n_seq, d): the carry entering each chunk.
+    chunk_hstate = jax.tree_util.tree_map(
+        lambda y: jnp.squeeze(y, axis=1)[:: config.seq_len], hstate_batch
+    )
+    # (rollout_steps, ...) -> (n_seq, seq_len, ...)
+    chunked = jax.tree_util.tree_map(
+        lambda x: x.reshape((n_seq, config.seq_len) + x.shape[1:]),
+        (traj_batch, advantages, targets),
+    )
+
+    rng, _rng = jax.random.split(rng)
+    permutation = jax.random.permutation(_rng, n_seq)
+    chunk_hstate, chunked = jax.tree_util.tree_map(
+        lambda x: jnp.take(x, permutation, axis=0), (chunk_hstate, chunked)
+    )
+
+    # (n_seq, ...) -> (num_mini_batch, seq_batch, ...).  The trajectory keeps its
+    # time axis, swapped in front of the batch axis for the network.
+    chunk_hstate = jax.tree_util.tree_map(
+        lambda x: x.reshape((config.num_mini_batch, seq_batch) + x.shape[1:]),
+        chunk_hstate,
+    )
+    chunked = jax.tree_util.tree_map(
+        lambda x: jnp.swapaxes(
+            x.reshape((config.num_mini_batch, seq_batch) + x.shape[1:]), 1, 2
+        ),
+        chunked,
+    )
+
+    traj_batch, advantages, targets = chunked
+    minibatches_info = ((traj_batch, advantages, targets), chunk_hstate)
+    return minibatches_info, rng
+
+
+@jax.jit
 def create_minibaches(config: TrainConfig, hstate_batch, batch, rng, train_state):
+    # `config.agent_type` is a static field, so this resolves at trace time.
+    if _agent_is_bptt(config.agent_type):
+        return create_seq_minibatches(config, hstate_batch, batch, rng)
+
     batch_hstate = jax.tree_util.tree_map(
         lambda y: jnp.squeeze(y, axis=1), hstate_batch
     )
@@ -1060,12 +1159,39 @@ def experiment(rng, config: TrainConfig):
         ActorCriticMLP,
         RealTimeActorCriticConv,
         RealTimeActorCriticMLP,
+        BPTTActorCriticConv,
+        BPTTActorCriticMLP,
     ):
         raise NotImplementedError(
             "CReLU activation is currently wired for ActorCriticConv, "
-            "ActorCriticMLP, RealTimeActorCriticConv, and "
-            "RealTimeActorCriticMLP."
+            "ActorCriticMLP, RealTimeActorCriticConv, "
+            "RealTimeActorCriticMLP, and the BPTTActorCritic* variants."
         )
+
+    _is_bptt = _agent_is_bptt(config.agent_type)
+    if _is_bptt and (config.compute_ntk or config.compute_plasticity):
+        # Both call apply_fn with a batch-of-steps obs and a batch-1 carry,
+        # which is the RealTime* shape contract, not the (seq_len, seq_batch)
+        # one the BPTT modules use.
+        raise NotImplementedError(
+            "NTK / plasticity metrics are not wired for T-BPTT agents: they "
+            "call apply_fn with the RealTime* shape contract. Unset "
+            "experiment.ntk_freq and experiment.compute_plasticity."
+        )
+    if _is_bptt:
+        if config.rollout_steps % config.seq_len != 0:
+            raise ValueError(
+                f"seq_len ({config.seq_len}) must divide rollout_steps "
+                f"({config.rollout_steps})."
+            )
+        _n_seq = config.rollout_steps // config.seq_len
+        if _n_seq % config.num_mini_batch != 0:
+            raise ValueError(
+                f"num_mini_batch ({config.num_mini_batch}) must divide the "
+                f"number of sequences (rollout_steps // seq_len = {_n_seq}). "
+                "Note this is a constraint on the chunk count, not on "
+                "rollout_steps."
+            )
 
     kwargs = {}
     if config.sparsity is not None:
@@ -1079,6 +1205,7 @@ def experiment(rng, config: TrainConfig):
         RealTimeActorCriticConvPooling,
         RealTimeActorCriticConvHint,
         RealTimeActorCriticConvHintRTU,
+        BPTTActorCriticConv,
     ):
         kwargs["conv"] = config.conv
     if _agent_class is ActorCriticMLP:
@@ -1122,6 +1249,10 @@ def experiment(rng, config: TrainConfig):
         jnp.zeros((1, 1)),
         jnp.zeros((1, 1)),
     )
+    if _is_bptt:
+        # The BPTT modules read axis 0 as time, so trace them at
+        # (seq_len=1, batch=1, ...) -- the same shape acting uses.
+        init_x = tuple(jnp.expand_dims(x, 0) for x in init_x)
 
     _is_conv_rtu = _agent_class in (
         RealTimeActorCriticConv,
@@ -1563,7 +1694,7 @@ def experiment(rng, config: TrainConfig):
         )
 
         # Bootstrap value at last state
-        _, _, last_value, _ = agent_step(
+        _, _, last_value, _ = (agent_step_bptt if _is_bptt else agent_step)(
             last_obs_encoded, train_state, rng, last_hstate
         )
         last_val = last_value.squeeze()
@@ -2076,6 +2207,9 @@ def main():
             rollout_steps=int(hypers["rollout_steps"]),
             epochs=int(hypers["epochs"]),
             num_mini_batch=int(hypers["num_mini_batch"]),
+            # T-BPTT window; 1 (no truncation window) for every non-BPTT agent,
+            # which never reads it. Validated in experiment().
+            seq_len=int(hypers.get("seq_len", 1)),
             gradient_clipping=bool(hypers["gradient_clipping"]),
             max_grad_norm=float(hypers["max_grad_norm"]),
             alpha_pi=float(hypers["optimizer_actor"]["alpha"]),
