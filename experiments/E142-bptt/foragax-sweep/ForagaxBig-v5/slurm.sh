@@ -1,28 +1,54 @@
 #!/bin/bash
-# Hyperparameter sweep for the T-BPTT RTU-PPO agents on ForagaxBig-v5, tuned at
-# 100k steps (10% of the 1M eval; tune-short / eval-long).
+# Hyperparameter sweep for the T-BPTT RTU-PPO agents on ForagaxBig-v5 (the
+# paper's unending-forager), tuned at 1M steps = 10% of the 10M eval.
 #
-# One file per seq_len -- see the sibling ForagaxSquareWaveTwoBiome-v11 sweep
-# for why the window must not be swept inside a single config.
+# One file per seq_len -- see the v11 sweep for why the window must not be swept
+# inside a single config (the selection pipeline collapses each file to one
+# winner, which is how DRQN's sequence_length got tuned away to 1 in XN34).
 #
-# Windows are {1,4,8,16} here, not {1,8,16,32}. rollout_steps=512 with
-# num_mini_batch=32 requires 512//T to be divisible by 32, capping T at 16.
-# Reaching T=32 would need rollout_steps=1024, halving the update count again.
+# rollout_steps=128 is one cue period: the environment signals the best biome
+# for 10 steps every 100, so a 128-step rollout holds about one cue event. It
+# also matches E141's tuned value on this environment.
 #
-# Both architectures are swept: Conv matches E141's tuned arch on this env, MLP
-# matches the one used on ForagaxSquareWaveTwoBiome-v11 so the two environments
-# are comparable at fixed architecture.
+# num_mini_batch=8 is held FIXED across windows so every T sees the same
+# optimisation regime: 16 transitions per update and 0.25 gradient steps per
+# environment step. Windows are {1,2,4,8,16}: 128//T must be divisible by 8,
+# which caps T at 16.
 #
-# Grid per file: alpha x lr_scale x entropy_coef = 27 cells, x --runs seeds.
+# The update rate is structurally capped by the window:
+#     grad steps / env step  =  epochs * num_mini_batch / rollout  <=  epochs / T
+# so at epochs=4 a 16-step window cannot exceed 0.25 -- E141's tuned 1.0 is only
+# reachable up to T=4, at ANY rollout. BPTTActorCriticConv_T1_mb32 is the
+# control for that: T=1 at num_mini_batch=32, i.e. E141's exact update rate.
+# It separates "the window helped" from "fewer updates hurt".
+#
+# Conv is the primary architecture -- the paper uses a CNN on RGB, and the MLP
+# flattens the 9x9x3 aperture and discards spatial structure on a 28x28 world.
+# The MLP launches are left commented rather than deleted; uncomment to run the
+# architecture control (it doubles the sweep).
 
 for fov in 9; do
-    for arch in Conv MLP; do
-        for T in 1 4 8 16; do
-            python scripts/slurm.py \
-                --cluster clusters/vulcan-gpu-vmap-32G.json \
-                --tasks 5 --time 03:00:00 --runs 10 --force \
-                --entry src/rtu_ppo.py \
-                -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCritic${arch}_T${T}.json
-        done
+    for T in 1 2 4 8 16; do
+        python scripts/slurm.py \
+            --cluster clusters/vulcan-gpu-vmap-32G.json \
+            --tasks 5 --time 03:00:00 --runs 10 --force \
+            --entry src/rtu_ppo.py \
+            -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticConv_T${T}.json
     done
+
+    # E141-rate control (1.0 grad steps / env step)
+    python scripts/slurm.py \
+        --cluster clusters/vulcan-gpu-vmap-32G.json \
+        --tasks 5 --time 03:00:00 --runs 10 --force \
+        --entry src/rtu_ppo.py \
+        -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticConv_T1_mb32.json
+
+    # Architecture control -- uncomment to also sweep the MLP.
+    # for T in 1 2 4 8 16; do
+    #     python scripts/slurm.py \
+    #         --cluster clusters/vulcan-gpu-vmap-32G.json \
+    #         --tasks 5 --time 03:00:00 --runs 10 --force \
+    #         --entry src/rtu_ppo.py \
+    #         -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticMLP_T${T}.json
+    # done
 done

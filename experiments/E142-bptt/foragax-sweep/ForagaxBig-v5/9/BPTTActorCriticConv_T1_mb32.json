@@ -1,5 +1,5 @@
 {
-    "agent": "BPTTActorCriticConv_T8",
+    "agent": "BPTTActorCriticConv_T1_mb32",
     "problem": "Foragax",
     "total_steps": 1000000,
     "metaParameters": {
@@ -15,9 +15,9 @@
         "gamma": 0.99,
         "gae_lambda": 0.95,
         "rollout_steps": 128,
-        "seq_len": 8,
+        "seq_len": 1,
         "epochs": 4,
-        "num_mini_batch": 8,
+        "num_mini_batch": 32,
         "clip_eps": 0.2,
         "gradient_clipping": true,
         "max_grad_norm": 0.5,
