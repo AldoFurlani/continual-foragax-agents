@@ -1,7 +1,7 @@
 {
-    "agent": "BPTTActorCriticConv_T8",
+    "agent": "BPTTActorCriticConv_T16",
     "problem": "Foragax",
-    "total_steps": 1000000,
+    "total_steps": 10000000,
     "metaParameters": {
         "environment": {
             "env_id": "ForagaxBig-v5",
@@ -9,42 +9,31 @@
             "observation_type": "rgb"
         },
         "experiment": {
-            "seed_offset": 1000000,
-            "compute_plasticity": false
+            "seed_offset": 0,
+            "compute_plasticity": false,
+            "r_stats_freq": 128
         },
         "gamma": 0.99,
         "gae_lambda": 0.95,
         "rollout_steps": 128,
-        "seq_len": 8,
+        "seq_len": 16,
         "epochs": 4,
         "num_mini_batch": 8,
         "clip_eps": 0.2,
         "gradient_clipping": true,
         "max_grad_norm": 0.5,
         "vf_coef": 0.5,
-        "entropy_coef": [
-            0.01,
-            0.1,
-            1.0
-        ],
+        "entropy_coef": 0.1,
         "optimizer_actor": {
             "name": "Adam",
-            "alpha": [
-                0.001,
-                0.0003,
-                0.0001
-            ],
+            "alpha": 0.0003,
             "beta1": 0.9,
             "beta2": 0.999,
             "eps": 1e-05
         },
         "optimizer_critic": {
             "name": "Adam",
-            "lr_scale": [
-                0.1,
-                1.0,
-                10.0
-            ],
+            "lr_scale": 1.0,
             "beta1": 0.9,
             "beta2": 0.999,
             "eps": 1e-05
