@@ -54,7 +54,7 @@ for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 20 --time 03:00:00 --runs 10 --force \
+            --tasks 50 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLP_T${T}.json
     done
@@ -85,7 +85,7 @@ for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 20 --time 03:00:00 --runs 10 --force \
+            --tasks 50 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done
