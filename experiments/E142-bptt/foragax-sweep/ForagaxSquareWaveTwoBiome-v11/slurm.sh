@@ -40,3 +40,27 @@ for fov in 9; do
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLP_T${T}.json
     done
 done
+
+# The stacked backbone (n_blocks=2 [RTU -> MLP] residual blocks per branch),
+# swept over the same windows so the depth effect and the window effect are
+# separable rather than confounded. Its real-time counterpart is E140's
+# RealTimeActorCriticMLPStacked on this same environment.
+#
+# --tasks 2, not 5. Measured at d_hidden=512 / hidden=64 / n_blocks=2 the
+# stacked MLP holds 1,431,493 params against the single layer's 315,461 --
+# 4.5x, and therefore 4.5x the Adam state. Stored activations rise by roughly
+# n_blocks * (2*d_hidden + mlp_expansion*W + W) / (2*d_hidden) ~ 2.6x per
+# branch. 5 / 2.6 rounds down to 2 vmapped runs on the same L40S. This is a
+# conservative starting point, not a measured ceiling: raise it if the jobs
+# land well under memory, and note --tasks only changes how runs are packed
+# into jobs, never the results. scripts/slurm.py is idempotent, so re-running
+# after an OOM at a lower --tasks fills exactly the missing seeds.
+for fov in 9; do
+    for T in 1 8 16 32; do
+        python scripts/slurm.py \
+            --cluster clusters/vulcan-gpu-vmap-32G.json \
+            --tasks 2 --time 03:00:00 --runs 10 --force \
+            --entry src/rtu_ppo.py \
+            -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
+    done
+done

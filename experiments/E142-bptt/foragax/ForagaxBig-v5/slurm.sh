@@ -41,3 +41,26 @@ for fov in 9; do
             -e experiments/E142-bptt/foragax/ForagaxBig-v5/${fov}/BPTTActorCriticConv_T${T}.json
     done
 done
+
+# The stacked backbone over the same five windows. Two curves rather than one:
+# the single-layer curve says what the window buys, the pair says whether depth
+# and window are additive or whether depth substitutes for the window.
+#
+# --tasks 2 and --time 24:00:00, both raised from the single-layer settings.
+# Memory: the stacked conv agent is 3.5x the params at n_blocks=2 (1,568,101 vs
+# 452,069) with ~2.6x the stored activations per branch, so 5 vmapped runs no
+# longer fit the L40S that held 5 single-layer ones. Walltime: two RTU cells per
+# branch instead of one roughly doubles the per-update cost, and this
+# environment runs 10M steps at rollout_steps=128 -- ~78k updates, 16x the
+# update count of the v11 configs -- so the 12h that sized the single layer is
+# not enough headroom. scripts/slurm.py is idempotent: re-run to fill any seeds
+# lost to a timeout.
+for fov in 9; do
+    for T in 1 2 4 8 16; do
+        python scripts/slurm.py \
+            --cluster clusters/vulcan-gpu-vmap-32G.json \
+            --tasks 2 --time 24:00:00 --runs 30 --force \
+            --entry src/rtu_ppo.py \
+            -e experiments/E142-bptt/foragax/ForagaxBig-v5/${fov}/BPTTActorCriticConvStacked_T${T}.json
+    done
+done

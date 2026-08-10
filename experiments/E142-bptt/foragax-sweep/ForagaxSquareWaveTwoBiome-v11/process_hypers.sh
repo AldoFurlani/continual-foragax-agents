@@ -21,8 +21,18 @@ export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_thread
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
 export JAX_PLATFORMS=cpu
 
-# Selects, INDEPENDENTLY PER seq_len, the best (alpha, lr_scale, entropy_coef)
-# by mean_ewm_reward, writing hypers/9/BPTTActorCriticMLP_T<N>.json and (via
+# Selects, INDEPENDENTLY PER AGENT AND PER seq_len, the best (alpha, lr_scale,
+# entropy_coef) by mean_ewm_reward, writing hypers/9/<agent>_T<N>.json and (via
 # update_best_config, stripping "-sweep") the matching 10M eval config.
 # seq_len is a scalar in every sweep file, so it is never overwritten.
+#
+# Covers BOTH backbones -- BPTTActorCriticMLP_T* and BPTTActorCriticMLPStacked_T*
+# -- with no argument needed: hypers.py enumerates whatever result directories
+# exist, one selection per config file. The stacked agent is 4.5x the params at
+# n_blocks=2, so its optimum sits at a different learning rate; selecting the
+# two jointly would confound depth with a mis-set alpha, exactly as selecting
+# across seq_len would confound the window.
+#
+# Run only after every sweep job has finished. Selection reads whatever seeds
+# are on disk, so a partially complete sweep silently picks from fewer.
 $SLURM_TMPDIR/.venv/bin/python experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/hypers.py
