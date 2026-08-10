@@ -72,6 +72,47 @@ LABEL_MAP: Dict[str, str] = {
     "RealTimeActorCriticMLP": "RTU-PPO",
     "RealTimeActorCriticMLPReLU": "RTU-PPO (ReLU)",
     "RealTimeActorCriticMLPMulti": "RTU-PPO (Multi)",
+    # Depth ablation: n_blocks [RTU + MLP] residual blocks. Deliberately NOT
+    # labelled "L1/L2/L4" as the plot.sh comments say -- "RTU-PPO (L2)" is
+    # already taken below by the L2-REGULARISED variant.
+    "RealTimeActorCriticMLPStacked1": "RTU-PPO (Stacked 1)",
+    "RealTimeActorCriticMLPStacked2": "RTU-PPO (Stacked 2)",
+    "RealTimeActorCriticMLPStacked4": "RTU-PPO (Stacked 4)",
+    # E141's two RTU-PPO agents on the unending forager. Conv-Multi is the
+    # two-RTU concat-skip stack; the plain Conv is the single-layer one.
+    "RealTimeActorCriticConv": "RTU-PPO Conv",
+    "RealTimeActorCriticConvMulti": "RTU-PPO Conv-Multi",
+    # T-BPTT variants (E142): same architecture as RTU-PPO, gradients through a
+    # truncated window instead of the real-time RTRL correction. T=1 is the
+    # control -- the window removed, architecture unchanged -- but that is a
+    # caption fact, not a label one: tagging only T=1 leaves every window legend
+    # ragged, so all windows read uniformly as "(T=N)".
+    "BPTTActorCriticMLP_T1": "T-BPTT (T=1)",
+    "BPTTActorCriticMLP_T4": "T-BPTT (T=4)",
+    "BPTTActorCriticMLP_T8": "T-BPTT (T=8)",
+    "BPTTActorCriticMLP_T16": "T-BPTT (T=16)",
+    "BPTTActorCriticMLP_T32": "T-BPTT (T=32)",
+    "BPTTActorCriticConv_T1": "T-BPTT Conv (T=1)",
+    "BPTTActorCriticConv_T2": "T-BPTT Conv (T=2)",
+    "BPTTActorCriticConv_T4": "T-BPTT Conv (T=4)",
+    "BPTTActorCriticConv_T8": "T-BPTT Conv (T=8)",
+    "BPTTActorCriticConv_T16": "T-BPTT Conv (T=16)",
+    # Stacked LRU-style backbone under T-BPTT: same window sweep, but the
+    # gradient now also crosses the two RTU blocks through time.
+    "BPTTActorCriticConvStacked_T1": "T-BPTT Conv-Stacked (T=1)",
+    "BPTTActorCriticConvStacked_T2": "T-BPTT Conv-Stacked (T=2)",
+    "BPTTActorCriticConvStacked_T4": "T-BPTT Conv-Stacked (T=4)",
+    "BPTTActorCriticConvStacked_T8": "T-BPTT Conv-Stacked (T=8)",
+    "BPTTActorCriticConvStacked_T16": "T-BPTT Conv-Stacked (T=16)",
+    "BPTTActorCriticMLPStacked_T1": "T-BPTT Stacked (T=1)",
+    "BPTTActorCriticMLPStacked_T2": "T-BPTT Stacked (T=2)",
+    "BPTTActorCriticMLPStacked_T4": "T-BPTT Stacked (T=4)",
+    "BPTTActorCriticMLPStacked_T8": "T-BPTT Stacked (T=8)",
+    "BPTTActorCriticMLPStacked_T16": "T-BPTT Stacked (T=16)",
+    # T=32 is in the v11 window set (1/8/16/32); without this entry
+    # get_mapped_label falls through to the raw agent name and the legend reads
+    # "BPTTActorCriticMLPStacked_T32 (FOV 9)" beside "T-BPTT Stacked (T=16)".
+    "BPTTActorCriticMLPStacked_T32": "T-BPTT Stacked (T=32)",
     "RealTimeActorCriticMLP-l2": "RTU-PPO (L2)",
     "PPO-RTU": "RTU-PPO",
     "PPO-RTU_128": "RTU-PPO",

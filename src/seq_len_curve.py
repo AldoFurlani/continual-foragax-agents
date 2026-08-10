@@ -46,7 +46,11 @@ import polars as pl
 from plotting_utils import despine, load_data, save_plot
 
 # BPTTActorCriticMLP_T16 -> ("MLP", 16)
-AGENT_RE = re.compile(r"^BPTTActorCritic(?P<arch>Conv|MLP)_T(?P<seq_len>\d+)$")
+# The Stacked variants must precede their bare counterparts in the alternation
+# so the stacked agents are not read as the single-layer ones.
+AGENT_RE = re.compile(
+    r"^BPTTActorCritic(?P<arch>ConvStacked|Conv|MLPStacked|MLP)_T(?P<seq_len>\d+)$"
+)
 
 # Bounds on the reported memory time constant. tau = -1/ln(r) is unbounded as
 # r -> 1, so cap it well above any horizon these environments contain (v11's
@@ -61,7 +65,7 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("path", help="Experiment directory (the eval dir, not -sweep)")
-    p.add_argument("--arch", choices=["Conv", "MLP"], default=None,
+    p.add_argument("--arch", choices=["Conv", "ConvStacked", "MLP", "MLPStacked"], default=None,
                    help="Restrict to one architecture (default: every arch present)")
     p.add_argument("--aperture", type=int, default=9)
     p.add_argument("--metric", default="ewm_reward")
@@ -72,6 +76,13 @@ def parse_args():
     p.add_argument("--baseline-path", default=None,
                    help="Experiment dir holding the matched real-time agent")
     p.add_argument("--baseline-alg", default="RealTimeActorCriticMLP")
+    p.add_argument("--baseline-end-frame", type=float, default=None,
+                   help="Truncate the baseline to this many frames before taking "
+                        "its late window. Needed when the baseline ran a longer "
+                        "horizon than the T-BPTT agents: --tail-fraction is "
+                        "relative to each run's own last frame, so a 30M "
+                        "baseline would otherwise be summarised over 22.5M-30M "
+                        "and compared against a 10M run's 7.5M-10M.")
     p.add_argument("--save-type", default="png")
     p.add_argument("--plot-name", default=None)
     return p.parse_args()
@@ -154,6 +165,14 @@ def baseline_value(args):
     if sub.height == 0:
         print(f"  ! baseline {args.baseline_alg} not found in {args.baseline_path}")
         return None
+    if args.baseline_end_frame is not None:
+        sub = sub.filter(pl.col("frame") <= args.baseline_end_frame)
+        if sub.height == 0:
+            print(f"  ! baseline {args.baseline_alg} has no frames <= "
+                  f"{args.baseline_end_frame:.0f}")
+            return None
+        print(f"  baseline {args.baseline_alg} truncated to "
+              f"{args.baseline_end_frame:.0f} frames before its late window")
     vals = _per_seed(_tail(sub, args.tail_fraction), args.metric)[args.metric].to_numpy()
     return _mean_ci(vals)
 
@@ -216,7 +235,7 @@ def main():
     exp_path = Path(args.path).resolve()
     df = load_data(exp_path)
 
-    archs = [args.arch] if args.arch else ["Conv", "MLP"]
+    archs = [args.arch] if args.arch else ["Conv", "ConvStacked", "MLP", "MLPStacked"]
     baseline = baseline_value(args)
 
     for arch in archs:
