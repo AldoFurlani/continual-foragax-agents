@@ -41,6 +41,7 @@
         "representation": {
             "hidden": 64,
             "d_hidden": 512,
+            "activation": "tanh",
             "use_layernorm": true,
             "conv": "PConv2DConv2D"
         }

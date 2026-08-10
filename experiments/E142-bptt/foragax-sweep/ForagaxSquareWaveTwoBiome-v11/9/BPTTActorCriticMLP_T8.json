@@ -52,7 +52,7 @@
         "representation": {
             "hidden": 64,
             "d_hidden": 512,
-            "activation": "relu",
+            "activation": "tanh",
             "use_layernorm": true
         }
     }
