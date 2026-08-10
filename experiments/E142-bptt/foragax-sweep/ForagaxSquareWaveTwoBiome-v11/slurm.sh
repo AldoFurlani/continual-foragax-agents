@@ -46,20 +46,27 @@ done
 # separable rather than confounded. Its real-time counterpart is E140's
 # RealTimeActorCriticMLPStacked on this same environment.
 #
-# --tasks 2, not 5. Measured at d_hidden=512 / hidden=64 / n_blocks=2 the
-# stacked MLP holds 1,431,493 params against the single layer's 315,461 --
-# 4.5x, and therefore 4.5x the Adam state. Stored activations rise by roughly
-# n_blocks * (2*d_hidden + mlp_expansion*W + W) / (2*d_hidden) ~ 2.6x per
-# branch. 5 / 2.6 rounds down to 2 vmapped runs on the same L40S. This is a
-# conservative starting point, not a measured ceiling: raise it if the jobs
-# land well under memory, and note --tasks only changes how runs are packed
-# into jobs, never the results. scripts/slurm.py is idempotent, so re-running
-# after an OOM at a lower --tasks fills exactly the missing seeds.
+# --tasks 5, matching the single-layer arm above. Depth costs far less memory
+# than the parameter ratio suggests. At d_hidden=512 / hidden=64 / n_blocks=2
+# the stacked MLP holds 1,431,493 params against the single layer's 315,461, so
+# params + Adam moments go from ~3.8MB to ~17MB per run -- 13MB more, on a card
+# with 48GB.
+#
+# The window costs nothing at all. create_seq_minibatches sets
+#     n_seq = rollout_steps // seq_len,  seq_batch = n_seq // num_mini_batch
+# so transitions per minibatch = seq_len * seq_batch = rollout_steps /
+# num_mini_batch = 64 here, INDEPENDENT of seq_len. T=32 stores the same 64
+# transition activations as T=1, just shaped (32,2) instead of (1,64). T-BPTT
+# trades the RTRL sensitivity carry for a reshape, not for O(seq_len) memory.
+#
+# If T=32 does OOM, drop --tasks for that window alone: it only changes how runs
+# are packed into jobs, never the results, and scripts/slurm.py is idempotent so
+# a re-run fills exactly the missing seeds.
 for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 2 --time 03:00:00 --runs 10 --force \
+            --tasks 5 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done

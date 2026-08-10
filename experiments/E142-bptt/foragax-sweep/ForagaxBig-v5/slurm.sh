@@ -50,19 +50,24 @@ done
 # rollout_steps=128 and num_mini_batch=8 leave T=16 with exactly 8 chunks, so
 # 16 is the largest window this rollout admits for either backbone.
 #
-# --tasks 2, not 5. Measured at d_hidden=512 / hidden=64 / n_blocks=2 the
-# stacked conv agent holds 1,568,101 params against the single layer's 452,069
-# -- 3.5x, and therefore 3.5x the Adam state -- with stored activations up
-# roughly 2.6x per branch. 5 / 2.6 rounds down to 2 vmapped runs on the same
-# L40S. Conservative starting point, not a measured ceiling: raise it if the
-# jobs land well under memory. --tasks only changes how runs are packed into
-# jobs, never the results, and scripts/slurm.py is idempotent, so re-running
-# after an OOM at a lower --tasks fills exactly the missing seeds.
+# --tasks 5, matching the single-layer arm above. At d_hidden=512 / hidden=64 /
+# n_blocks=2 the stacked conv agent holds 1,568,101 params against the single
+# layer's 452,069, so params + Adam moments go from ~5.4MB to ~19MB per run --
+# 13MB more, on a card with 48GB.
+#
+# The window costs nothing: create_seq_minibatches makes transitions per
+# minibatch = seq_len * seq_batch = rollout_steps / num_mini_batch = 16 here,
+# INDEPENDENT of seq_len. T=16 stores the same 16 transition activations as
+# T=1, shaped (16,1) instead of (1,16).
+#
+# If a window does OOM, drop --tasks for that window alone: it only changes how
+# runs are packed into jobs, never the results, and scripts/slurm.py is
+# idempotent so a re-run fills exactly the missing seeds.
 for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 2 --time 03:00:00 --runs 10 --force \
+            --tasks 5 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticConvStacked_T${T}.json
     done

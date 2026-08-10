@@ -46,20 +46,23 @@ done
 # the single-layer curve says what the window buys, the pair says whether depth
 # and window are additive or whether depth substitutes for the window.
 #
-# --tasks 2 and --time 24:00:00, both raised from the single-layer settings.
-# Memory: the stacked conv agent is 3.5x the params at n_blocks=2 (1,568,101 vs
-# 452,069) with ~2.6x the stored activations per branch, so 5 vmapped runs no
-# longer fit the L40S that held 5 single-layer ones. Walltime: two RTU cells per
-# branch instead of one roughly doubles the per-update cost, and this
-# environment runs 10M steps at rollout_steps=128 -- ~78k updates, 16x the
-# update count of the v11 configs -- so the 12h that sized the single layer is
-# not enough headroom. scripts/slurm.py is idempotent: re-run to fill any seeds
-# lost to a timeout.
+# --tasks 5 as for the single layer; only --time is raised, to 24:00:00.
+#
+# Memory is not the constraint. Depth adds ~13MB per run (params + Adam moments
+# go from ~5.4MB to ~19MB on a 48GB card), and the window adds nothing at all:
+# create_seq_minibatches makes transitions per minibatch = rollout_steps /
+# num_mini_batch = 16 regardless of seq_len.
+#
+# Walltime is the constraint. Two RTU cells per branch instead of one roughly
+# doubles the per-update cost, and this environment runs 10M steps at
+# rollout_steps=128 -- ~78k updates, 16x the update count of the v11 configs --
+# so the 12h that sized the single layer leaves no headroom. scripts/slurm.py is
+# idempotent: re-run to fill any seeds lost to a timeout.
 for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 2 --time 24:00:00 --runs 30 --force \
+            --tasks 5 --time 24:00:00 --runs 30 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax/ForagaxBig-v5/${fov}/BPTTActorCriticConvStacked_T${T}.json
     done
