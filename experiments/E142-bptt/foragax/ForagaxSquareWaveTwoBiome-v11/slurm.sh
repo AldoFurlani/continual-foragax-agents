@@ -21,12 +21,33 @@
 # 10M steps at rollout_steps=2048 is ~4900 updates. Measured per-update cost
 # rises with the window (T=1 614ms, T=16 761ms, T=32 883ms on CPU), so budget
 # T=32 at roughly 1.5x the T=1 walltime.
+#
+# --tasks 20, raised from the 5 inherited from E139 (whose limit came from the
+# RTRL sensitivity carry that T-BPTT does not have -- see the sweep script for
+# that derivation).
+#
+# THE EVAL IS THE BINDING CONSTRAINT, NOT THE SWEEP, and a width that passes at
+# 1M does not automatically pass here. The training loop is a lax.scan over
+# num_updates that stacks per-env-step arrays (rewards, pos, biome_id,
+# object_collected_id, biome_regret, biome_rank), so that buffer is sized by
+# total_steps: ~28MB per run at 1M, ~280MB at 10M. It dominates everything else
+# -- the 32MB rollout carry and 16MB of params/Adam are noise beside it.
+#
+# Modelled per-run cost here is ~332MB. The same model accounts for only ~2.5GB
+# of E139's measured ~8.4GB/run, so it undercounts ~3.3x; corrected, ~1.1GB/run
+# puts the ceiling near 40 and 20 inside it with margin. ESTIMATED, NOT
+# MEASURED. XLA allocates the scan output up front, so if a width is too high it
+# fails on the first executed step with RESOURCE_EXHAUSTED in
+# $SCRATCH/job_output_<jobid>.txt rather than hours in.
+#
+# Sweep and eval need not share a width: the sweep's logging buffer is 10x
+# smaller, so it can be packed considerably wider than this.
 
 for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 06:00:00 --runs 30 --force \
+            --tasks 20 --time 06:00:00 --runs 30 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLP_T${T}.json
     done
@@ -39,12 +60,14 @@ done
 # reference here, exactly as E139's RealTimeActorCriticMLP is for the single
 # layer -- same architecture, same budget, RTRL instead of a truncated window.
 #
-# --tasks 5 as for the single layer; only --time is raised, to 12:00:00.
+# --tasks 20 as for the single layer (see its note above for the sizing and the
+# estimate's caveats); only --time is raised, to 12:00:00.
 #
-# Memory is not the constraint. Depth adds ~13MB per run (params + Adam moments
-# go from ~3.8MB to ~17MB on a 48GB card), and the window adds nothing at all:
+# Depth is not what makes this tight: it adds ~13MB per run (params + Adam
+# moments go from ~3.8MB to ~17MB), and the window adds nothing at all --
 # create_seq_minibatches makes transitions per minibatch = rollout_steps /
-# num_mini_batch = 64 regardless of seq_len.
+# num_mini_batch = 64 regardless of seq_len. The ~280MB/run lax.scan logging
+# buffer is what sets the ceiling, and it is identical for both backbones.
 #
 # Walltime is the constraint. Two RTU cells per branch instead of one roughly
 # doubles the per-update cost, on top of the window's own scaling (measured
@@ -54,7 +77,7 @@ for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 12:00:00 --runs 30 --force \
+            --tasks 20 --time 12:00:00 --runs 30 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done

@@ -36,7 +36,7 @@ for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 12:00:00 --runs 30 --force \
+            --tasks 20 --time 12:00:00 --runs 30 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax/ForagaxBig-v5/${fov}/BPTTActorCriticConv_T${T}.json
     done
@@ -46,10 +46,17 @@ done
 # the single-layer curve says what the window buys, the pair says whether depth
 # and window are additive or whether depth substitutes for the window.
 #
-# --tasks 5 as for the single layer; only --time is raised, to 24:00:00.
+# --tasks 20 as for the single layer; only --time is raised, to 24:00:00.
 #
-# Memory is not the constraint. Depth adds ~13MB per run (params + Adam moments
-# go from ~5.4MB to ~19MB on a 48GB card), and the window adds nothing at all:
+# As on v11, the eval is the binding constraint rather than the sweep: the
+# lax.scan over num_updates stacks per-env-step arrays sized by total_steps, so
+# that buffer is ~280MB per run at 10M against ~28MB at 1M. It dominates
+# everything below. This environment is otherwise the cheaper of the two --
+# rollout_steps=128 means a ~2MB rollout carry rather than v11's ~32MB -- so if
+# 20 holds on v11 it holds here. Estimated, not measured.
+#
+# Depth is not what makes this tight: it adds ~13MB per run (params + Adam
+# moments go from ~5.4MB to ~19MB), and the window adds nothing at all:
 # create_seq_minibatches makes transitions per minibatch = rollout_steps /
 # num_mini_batch = 16 regardless of seq_len.
 #
@@ -62,7 +69,7 @@ for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 24:00:00 --runs 30 --force \
+            --tasks 20 --time 24:00:00 --runs 30 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax/ForagaxBig-v5/${fov}/BPTTActorCriticConvStacked_T${T}.json
     done

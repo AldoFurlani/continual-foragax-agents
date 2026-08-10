@@ -36,7 +36,7 @@ for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 03:00:00 --runs 10 --force \
+            --tasks 20 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticConv_T${T}.json
     done
@@ -50,10 +50,17 @@ done
 # rollout_steps=128 and num_mini_batch=8 leave T=16 with exactly 8 chunks, so
 # 16 is the largest window this rollout admits for either backbone.
 #
-# --tasks 5, matching the single-layer arm above. At d_hidden=512 / hidden=64 /
-# n_blocks=2 the stacked conv agent holds 1,568,101 params against the single
-# layer's 452,069, so params + Adam moments go from ~5.4MB to ~19MB per run --
-# 13MB more, on a card with 48GB.
+# --tasks 20, matching the single-layer arm above. Raised from the 5 inherited
+# from E139, whose limit came from the RTRL sensitivity carry that T-BPTT does
+# not have (see the v11 sweep script for that derivation). Estimated, not
+# measured; back off if a job reports RESOURCE_EXHAUSTED.
+#
+# This environment is the CHEAPER of the two per run: rollout_steps=128 rather
+# than 2048, so the stored rollout carry is ~2MB instead of ~32MB. The ~28MB
+# lax.scan logging buffer (sized by total_steps, not rollout_steps) is unchanged,
+# and dominates. At d_hidden=512 / hidden=64 / n_blocks=2 the stacked conv agent
+# holds 1,568,101 params against the single layer's 452,069, so params + Adam
+# moments go from ~5.4MB to ~19MB per run -- 13MB more, on a card with 48GB.
 #
 # The window costs nothing: create_seq_minibatches makes transitions per
 # minibatch = seq_len * seq_batch = rollout_steps / num_mini_batch = 16 here,
@@ -67,7 +74,7 @@ for fov in 9; do
     for T in 1 2 4 8 16; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 03:00:00 --runs 10 --force \
+            --tasks 20 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxBig-v5/${fov}/BPTTActorCriticConvStacked_T${T}.json
     done

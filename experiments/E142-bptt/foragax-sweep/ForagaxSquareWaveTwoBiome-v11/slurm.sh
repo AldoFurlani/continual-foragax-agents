@@ -24,12 +24,13 @@
 # with the recurrent gradient path removed, so it isolates what the window buys
 # over the real-time RTRL cell in ../../../E139-ppo-plasticity/.
 #
-# --tasks 5 mirrors E139, and is CONSERVATIVE here rather than tight. E139's
-# limit came from the RTRL sensitivity carry: four (batch, d_input, d_hidden)
-# trace tensors per RTU, 1128KB per step, so 2.2GB over a 2048-step rollout and
-# ~11GB at 5 vmapped runs -- that is what OOMs a 48GB L40S at 6. T-BPTT drops
-# that carry entirely and stores only (h_c1, h_c2): 8KB per step, 16MB per
-# rollout, ~140x less.
+# --tasks 20, raised from the 5 this experiment inherited from E139. That 5 was
+# set by the RTRL sensitivity carry: four (batch, d_input, d_hidden) trace
+# tensors per RTU, 1128KB per step, so 2.2GB over a 2048-step rollout and ~11GB
+# at 5 runs -- which is what OOMs a 48GB L40S at 6. T-BPTT has no such carry; it
+# stores only (h_c1, h_c2), 8KB per step and 16MB per rollout, ~140x less. The
+# cluster file's own default is tasks_per_vmap=256, so 5 was far below what this
+# GPU holds for an agent without that carry.
 #
 # The window adds nothing either. create_seq_minibatches sets
 #     n_seq = rollout_steps // seq_len,  seq_batch = n_seq // num_mini_batch
@@ -37,13 +38,23 @@
 # num_mini_batch = 64 here, INDEPENDENT of seq_len. T=32 stores the same 64
 # transition activations as T=1, shaped (32,2) instead of (1,64).
 #
-# scripts/slurm.py is idempotent: re-run after timeouts to fill missing seeds.
+# 20 IS ESTIMATED, NOT MEASURED. Modelled per-run cost at 1M steps is ~80MB
+# (28MB lax.scan logging buffer + 32MB rollout carry + 16MB params/Adam + ~4MB
+# buffers). The same model applied to E139 accounts for only ~2.5GB of its
+# measured ~8.4GB/run, so it undercounts ~3.3x; corrected, ~264MB/run puts the
+# ceiling near 170 and 20 well inside it. Verify rather than trust this: an OOM
+# shows up as RESOURCE_EXHAUSTED in $SCRATCH/job_output_<jobid>.txt, and XLA
+# allocates the scan output up front so it fails on the first executed step, not
+# hours in.
+#
+# --tasks changes only how runs are packed into jobs, never the results, and
+# scripts/slurm.py is idempotent: re-run at a lower width to fill missing seeds.
 
 for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 03:00:00 --runs 10 --force \
+            --tasks 20 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLP_T${T}.json
     done
@@ -54,11 +65,11 @@ done
 # separable rather than confounded. Its real-time counterpart is E140's
 # RealTimeActorCriticMLPStacked on this same environment.
 #
-# --tasks 5, matching the single-layer arm above. Depth costs far less memory
-# than the parameter ratio suggests. At d_hidden=512 / hidden=64 / n_blocks=2
-# the stacked MLP holds 1,431,493 params against the single layer's 315,461, so
-# params + Adam moments go from ~3.8MB to ~17MB per run -- 13MB more, on a card
-# with 48GB.
+# --tasks 20, matching the single-layer arm above (see its note for the sizing
+# and its caveats). Depth costs far less memory than the parameter ratio
+# suggests: at d_hidden=512 / hidden=64 / n_blocks=2 the stacked MLP holds
+# 1,431,493 params against the single layer's 315,461, so params + Adam moments
+# go from ~3.8MB to ~17MB per run -- 13MB more, on a card with 48GB.
 #
 # The window costs nothing at all. create_seq_minibatches sets
 #     n_seq = rollout_steps // seq_len,  seq_batch = n_seq // num_mini_batch
@@ -74,7 +85,7 @@ for fov in 9; do
     for T in 1 8 16 32; do
         python scripts/slurm.py \
             --cluster clusters/vulcan-gpu-vmap-32G.json \
-            --tasks 5 --time 03:00:00 --runs 10 --force \
+            --tasks 20 --time 03:00:00 --runs 10 --force \
             --entry src/rtu_ppo.py \
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done
