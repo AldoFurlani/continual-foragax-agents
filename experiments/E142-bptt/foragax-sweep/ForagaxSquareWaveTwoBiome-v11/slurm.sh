@@ -24,12 +24,20 @@
 # with the recurrent gradient path removed, so it isolates what the window buys
 # over the real-time RTRL cell in ../../../E139-ppo-plasticity/.
 #
-# --tasks 5 mirrors E139: d_hidden=512 + LayerNorm has the same per-run
-# footprint, which OOMs a single L40S above 5 vmapped runs. T-BPTT adds
-# O(seq_len) stored activations per sequence but drops the RTRL sensitivity
-# carry (which was O(d_input * d_hidden) per step), so peak memory is comparable
-# -- drop --tasks for T=32 if you see OOM. scripts/slurm.py is idempotent:
-# re-run after timeouts to fill missing seeds.
+# --tasks 5 mirrors E139, and is CONSERVATIVE here rather than tight. E139's
+# limit came from the RTRL sensitivity carry: four (batch, d_input, d_hidden)
+# trace tensors per RTU, 1128KB per step, so 2.2GB over a 2048-step rollout and
+# ~11GB at 5 vmapped runs -- that is what OOMs a 48GB L40S at 6. T-BPTT drops
+# that carry entirely and stores only (h_c1, h_c2): 8KB per step, 16MB per
+# rollout, ~140x less.
+#
+# The window adds nothing either. create_seq_minibatches sets
+#     n_seq = rollout_steps // seq_len,  seq_batch = n_seq // num_mini_batch
+# so transitions per minibatch = seq_len * seq_batch = rollout_steps /
+# num_mini_batch = 64 here, INDEPENDENT of seq_len. T=32 stores the same 64
+# transition activations as T=1, shaped (32,2) instead of (1,64).
+#
+# scripts/slurm.py is idempotent: re-run after timeouts to fill missing seeds.
 
 for fov in 9; do
     for T in 1 8 16 32; do
