@@ -32,7 +32,9 @@ import utils.jax_compat  # noqa: F401
 from algorithms.nn.ACConv import ActorCriticConv
 from algorithms.nn.ACMLP import ActorCriticMLP
 from algorithms.nn.BPTTACConv import BPTTActorCriticConv
+from algorithms.nn.BPTTACConvStacked import BPTTActorCriticConvStacked
 from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
+from algorithms.nn.BPTTACMLPStacked import BPTTActorCriticMLPStacked
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
 from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
 from algorithms.nn.RealTimeACConvHint import RealTimeActorCriticConvHint
@@ -1206,12 +1208,18 @@ def experiment(rng, config: TrainConfig):
         RealTimeActorCriticConvHint,
         RealTimeActorCriticConvHintRTU,
         BPTTActorCriticConv,
+        BPTTActorCriticConvStacked,
     ):
         kwargs["conv"] = config.conv
     if _agent_class is ActorCriticMLP:
         kwargs["use_middle_layer"] = config.use_middle_layer
-    if _agent_class is RealTimeActorCriticMLPStacked:
+    if _agent_class in (
+        RealTimeActorCriticMLPStacked,
+        BPTTActorCriticConvStacked,
+        BPTTActorCriticMLPStacked,
+    ):
         kwargs["n_blocks"] = config.n_blocks
+    if _agent_class is RealTimeActorCriticMLPStacked:
         kwargs["use_gating"] = config.use_gating
 
     # Create and initialize the network. `agent` is dynamically dispatched via
@@ -1261,7 +1269,13 @@ def experiment(rng, config: TrainConfig):
     )
     _is_plain_conv_rtu = _agent_class is RealTimeActorCriticConv
     _is_conv_hint_rtu = _agent_class is RealTimeActorCriticConvHintRTU
-    _is_stacked_rtu = _agent_class is RealTimeActorCriticMLPStacked
+    # Both stacked backbones size every block's RTU input to the width-W
+    # residual stream and take n_blocks in initialize_memory.
+    _is_stacked_rtu = _agent_class in (
+        RealTimeActorCriticMLPStacked,
+        BPTTActorCriticConvStacked,
+        BPTTActorCriticMLPStacked,
+    )
     # Conv-Multi shares MLPMulti's 4-RTU carry and width-hidden_size RTU input.
     _is_multi_rtu = _agent_class in (
         RealTimeActorCriticMLPMulti,
