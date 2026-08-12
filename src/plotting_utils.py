@@ -113,6 +113,13 @@ LABEL_MAP: Dict[str, str] = {
     # get_mapped_label falls through to the raw agent name and the legend reads
     # "BPTTActorCriticMLPStacked_T32 (FOV 9)" beside "T-BPTT Stacked (T=16)".
     "BPTTActorCriticMLPStacked_T32": "T-BPTT Stacked (T=32)",
+    # Same stack under the RTRL agent's block topology (two pre-norm residuals
+    # + rtu_proj) rather than LRU's SequenceLayer, to separate topology from
+    # gradient scheme. Labelled "Stacked-PreNorm" for the headline difference.
+    "BPTTActorCriticMLPStackedPreNorm_T1": "T-BPTT Stacked-PreNorm (T=1)",
+    "BPTTActorCriticMLPStackedPreNorm_T8": "T-BPTT Stacked-PreNorm (T=8)",
+    "BPTTActorCriticMLPStackedPreNorm_T16": "T-BPTT Stacked-PreNorm (T=16)",
+    "BPTTActorCriticMLPStackedPreNorm_T32": "T-BPTT Stacked-PreNorm (T=32)",
     "RealTimeActorCriticMLP-l2": "RTU-PPO (L2)",
     "PPO-RTU": "RTU-PPO",
     "PPO-RTU_128": "RTU-PPO",

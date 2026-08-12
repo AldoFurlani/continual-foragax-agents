@@ -90,3 +90,36 @@ for fov in 9; do
             -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done
 done
+# Same depth and windows again, but with E140's block topology instead of LRU's:
+# two pre-norm residuals per block plus a dedicated rtu_proj, rather than one
+# post-norm residual with the MLP absorbing the projection.
+#
+# This is the missing cell of a 2x2 that was previously confounded --
+#
+#   RealTimeActorCriticMLPStacked        RTRL   + transformer-convention block
+#   BPTTActorCriticMLPStacked            T-BPTT + LRU SequenceLayer block
+#   BPTTActorCriticMLPStackedPreNorm     T-BPTT + transformer-convention block  <- this
+#
+# -- so gradient scheme and topology can finally be read apart. It is also
+# parameter-matched to E140 (711,365 params at d_hidden=512 / W=64 / n_blocks=2,
+# against the LRU-style block's 1,431,493), so a difference against E140 is the
+# gradient scheme alone and a difference against BPTTActorCriticMLPStacked is the
+# topology alone.
+#
+# Motivation: the LRU-style T-BPTT stack collapsed on 27-29/30 seeds at 10M while
+# E140's RTRL stack collapsed on 18/30 at the same depth -- despite T-BPTT being
+# the stronger gradient scheme, since it keeps the cross-layer temporal paths the
+# layer-local RTRL trace drops. Post-norm is the leading suspect: its dead seeds
+# show grad_l2 on the deeper RTU growing 7.2x over training while the shallower
+# one shrinks, which is the Post-LN signature (Xiong et al. 2020).
+#
+# use_gating is pinned False in the configs to match E140's Stacked2.
+for fov in 9; do
+    for T in 1 8 16 32; do
+        python scripts/slurm.py \
+            --cluster clusters/vulcan-gpu-vmap-32G.json \
+            --tasks 20 --time 03:00:00 --runs 10 --force \
+            --entry src/rtu_ppo.py \
+            -e experiments/E142-bptt/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStackedPreNorm_T${T}.json
+    done
+done

@@ -82,3 +82,24 @@ for fov in 9; do
             -e experiments/E142-bptt/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStacked_T${T}.json
     done
 done
+
+# The pre-norm / two-residual / rtu_proj stack (E140's block topology under
+# T-BPTT) over the same four windows. See the sweep script for why this variant
+# exists; in short it completes the gradient-scheme x topology 2x2 and is
+# parameter-matched to E140's Stacked2 at 711,365.
+#
+# Its matched real-time reference is E140's RealTimeActorCriticMLPStacked2 --
+# and unlike BPTTActorCriticMLPStacked, that comparison is now topology- AND
+# parameter-matched, so the only difference is RTRL vs a truncated window.
+#
+# --tasks 20 and --time 12:00:00 as for the other stacked arm: same depth, same
+# two RTU cells per branch, and slightly fewer parameters.
+for fov in 9; do
+    for T in 1 8 16 32; do
+        python scripts/slurm.py \
+            --cluster clusters/vulcan-gpu-vmap-32G.json \
+            --tasks 20 --time 12:00:00 --runs 30 --force \
+            --entry src/rtu_ppo.py \
+            -e experiments/E142-bptt/foragax/ForagaxSquareWaveTwoBiome-v11/${fov}/BPTTActorCriticMLPStackedPreNorm_T${T}.json
+    done
+done

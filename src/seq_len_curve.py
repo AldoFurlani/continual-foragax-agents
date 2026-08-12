@@ -49,7 +49,8 @@ from plotting_utils import despine, load_data, save_plot
 # The Stacked variants must precede their bare counterparts in the alternation
 # so the stacked agents are not read as the single-layer ones.
 AGENT_RE = re.compile(
-    r"^BPTTActorCritic(?P<arch>ConvStacked|Conv|MLPStacked|MLP)_T(?P<seq_len>\d+)$"
+    r"^BPTTActorCritic(?P<arch>ConvStacked|Conv|MLPStackedPreNorm|MLPStacked|MLP)"
+    r"_T(?P<seq_len>\d+)$"
 )
 
 # Bounds on the reported memory time constant. tau = -1/ln(r) is unbounded as
@@ -65,7 +66,9 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("path", help="Experiment directory (the eval dir, not -sweep)")
-    p.add_argument("--arch", choices=["Conv", "ConvStacked", "MLP", "MLPStacked"], default=None,
+    p.add_argument("--arch",
+                   choices=["Conv", "ConvStacked", "MLP", "MLPStacked",
+                            "MLPStackedPreNorm"], default=None,
                    help="Restrict to one architecture (default: every arch present)")
     p.add_argument("--aperture", type=int, default=9)
     p.add_argument("--metric", default="ewm_reward")

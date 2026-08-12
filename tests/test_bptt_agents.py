@@ -19,6 +19,7 @@ from algorithms.nn.BPTTACConv import BPTTActorCriticConv
 from algorithms.nn.BPTTACConvStacked import BPTTActorCriticConvStacked
 from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
 from algorithms.nn.BPTTACMLPStacked import BPTTActorCriticMLPStacked
+from algorithms.nn.BPTTACMLPStackedPreNorm import BPTTActorCriticMLPStackedPreNorm
 
 ACTION_DIM = 4
 D_HIDDEN = 8
@@ -26,7 +27,14 @@ HIDDEN_SIZE = 6
 OBS_SHAPE = (5, 5, 3)
 N_BLOCKS = 2
 
+# The one-skip / post-norm agents. Used ONLY by TestStackedResidualTopology,
+# whose assertions BPTTActorCriticMLPStackedPreNorm deliberately violates.
 STACKED = (BPTTActorCriticConvStacked, BPTTActorCriticMLPStacked)
+
+# Every agent whose constructor and initialize_memory take n_blocks -- which is
+# a wider set than STACKED. Kept separate so _build/_memory stay correct if
+# N_BLOCKS ever stops matching the class default.
+TAKES_N_BLOCKS = STACKED + (BPTTActorCriticMLPStackedPreNorm,)
 
 
 def _obs(T, B, key):
@@ -43,7 +51,7 @@ def _obs(T, B, key):
 
 
 def _build(cls, rtu_type, **kwargs):
-    if cls in STACKED:
+    if cls in TAKES_N_BLOCKS:
         kwargs.setdefault("n_blocks", N_BLOCKS)
     return cls(
         action_dim=ACTION_DIM,
@@ -56,7 +64,7 @@ def _build(cls, rtu_type, **kwargs):
 
 
 def _memory(cls, batch_size):
-    if cls in STACKED:
+    if cls in TAKES_N_BLOCKS:
         return cls.initialize_memory(batch_size, D_HIDDEN, n_blocks=N_BLOCKS)
     return cls.initialize_memory(batch_size, D_HIDDEN)
 
@@ -75,6 +83,8 @@ AGENTS = [
     ("stacked-nonlinear", BPTTActorCriticConvStacked, "non_linear_rtu", _STACKED_RTUS),
     ("mlp-stacked-linear", BPTTActorCriticMLPStacked, "linear_rtu", _STACKED_RTUS),
     ("mlp-stacked-nonlinear", BPTTActorCriticMLPStacked, "non_linear_rtu", _STACKED_RTUS),
+    ("mlp-prenorm-linear", BPTTActorCriticMLPStackedPreNorm, "linear_rtu", _STACKED_RTUS),
+    ("mlp-prenorm-nonlinear", BPTTActorCriticMLPStackedPreNorm, "non_linear_rtu", _STACKED_RTUS),
 ]
 
 
@@ -277,4 +287,71 @@ class TestStackedResidualTopology:
         assert jnp.abs(g_dead[0]).sum() == 0.0, (
             "temporal path survived the MLP being zeroed -- the RTU has a "
             "residual route to the stream that bypasses the MLP"
+        )
+
+
+class TestPreNormStackedTopology:
+    """BPTTActorCriticMLPStackedPreNorm is the deliberate opposite of the class
+    above: the transformer convention, with a residual around the RTU sublayer
+    and a second around the MLP. These mirror TestStackedResidualTopology and
+    would fail if the two agents were ever collapsed into one."""
+
+    CASES = [
+        (BPTTActorCriticMLPStackedPreNorm, r)
+        for r in ("linear_rtu", "non_linear_rtu")
+    ]
+
+    @pytest.mark.parametrize("cls,rtu_type", CASES)
+    def test_has_separate_rtu_residual_projection(self, cls, rtu_type):
+        """Two residuals per block require rtu_proj to bring the RTU's
+        2*d_hidden output back to the stream width, and it must exist per
+        block."""
+        net = _build(cls, rtu_type)
+        carry = _memory(cls, 1)
+        obs = _obs(3, 1, jax.random.PRNGKey(8))
+        params = net.init(jax.random.PRNGKey(9), carry, obs)
+
+        names = set(params["params"].keys())
+        for blk in range(N_BLOCKS):
+            assert f"actor_rtu_proj{blk}" in names
+            assert f"actor_mlp_up{blk}" in names
+            assert f"actor_mlp_down{blk}" in names
+            # pre-norm places a LayerNorm inside each of the two branches
+            assert f"actor_layernorm_rtu{blk}" in names
+            assert f"actor_layernorm_mlp{blk}" in names
+
+    @pytest.mark.parametrize("cls,rtu_type", CASES)
+    def test_mlp_is_not_the_only_path_out_of_the_rtu(self, cls, rtu_type):
+        """The mirror of test_mlp_is_the_only_path_out_of_the_rtu. Here the RTU
+        reaches the stream through rtu_proj, so blanking every MLP down-
+        projection must NOT sever temporal credit."""
+        T, B = 5, 1
+        net = _build(cls, rtu_type)
+        carry = _memory(cls, B)
+        obs = _obs(T, B, jax.random.PRNGKey(10))
+        params = net.init(jax.random.PRNGKey(11), carry, obs)
+
+        flat = flatten_dict(params)
+        blanked = unflatten_dict(
+            {
+                k: (
+                    jnp.zeros_like(v)  # pyright: ignore[reportArgumentType]
+                    if any("mlp_down" in part for part in k)
+                    else v
+                )
+                for k, v in flat.items()
+            }
+        )
+
+        def last_value(obs_img, p):
+            _, _, value = net.apply(p, carry, (obs_img,) + obs[1:])
+            return value[-1].sum()
+
+        g_live = jax.grad(last_value)(obs[0], params)
+        g_dead = jax.grad(last_value)(obs[0], blanked)
+
+        assert jnp.abs(g_live[0]).sum() > 0.0
+        assert jnp.abs(g_dead[0]).sum() > 0.0, (
+            "temporal path died with the MLP zeroed -- rtu_proj is not "
+            "providing the RTU a route to the stream"
         )

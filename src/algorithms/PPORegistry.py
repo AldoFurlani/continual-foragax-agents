@@ -4,6 +4,7 @@ from algorithms.nn.BPTTACConv import BPTTActorCriticConv
 from algorithms.nn.BPTTACConvStacked import BPTTActorCriticConvStacked
 from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
 from algorithms.nn.BPTTACMLPStacked import BPTTActorCriticMLPStacked
+from algorithms.nn.BPTTACMLPStackedPreNorm import BPTTActorCriticMLPStackedPreNorm
 from algorithms.nn.ESMAC import ESMAC
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
 from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
@@ -26,6 +27,10 @@ def getAgent(name):
 
     if name.startswith("BPTTActorCriticConv"):
         return BPTTActorCriticConv
+
+    # Must precede BPTTActorCriticMLPStacked, whose prefix it shares.
+    if name.startswith("BPTTActorCriticMLPStackedPreNorm"):
+        return BPTTActorCriticMLPStackedPreNorm
 
     # Must precede the generic BPTTActorCriticMLP prefix check.
     if name.startswith("BPTTActorCriticMLPStacked"):

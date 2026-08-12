@@ -109,3 +109,43 @@ python src/learning_curve.py "$EXP" \
     --end-frame 10000000 \
     --plot-name rtu_r_mean_by_window_stacked \
     --legend
+
+# 4. The pre-norm / two-residual stack (E140's block topology under T-BPTT).
+#    Its own figure for the same reason as (1b): four more series would make the
+#    overlay unreadable and interleave the bar panel across topologies.
+python src/learning_curve.py "$EXP" \
+    --metrics ewm_reward \
+    --filter-alg-apertures \
+        BPTTActorCriticMLPStackedPreNorm_T1:9 BPTTActorCriticMLPStackedPreNorm_T8:9 \
+        BPTTActorCriticMLPStackedPreNorm_T16:9 BPTTActorCriticMLPStackedPreNorm_T32:9 \
+    --end-frame 10000000 \
+    --vertical-lines $SWITCHES \
+    --plot-name ForagaxSquareWaveTwoBiome-v11_ewm_reward_curve_prenorm \
+    --legend-on-bar \
+    --plot-avg \
+    --horizontal-bars \
+    --ylim 2.2
+
+# 4b. Window curve against E140's Stacked2. This is the cleanest baseline
+#     comparison in the experiment: same block topology, same n_blocks, and
+#     parameter-matched at 711,365, so RTRL vs a truncated window is the only
+#     difference. --baseline-end-frame is still required (E140 ran 30M).
+#
+#     CAVEAT: E140's Stacked2 is bimodal at 10M -- 18/30 seeds dead, healthy
+#     mode 1.626 -- so its mean of 0.650 describes no actual run. Read the
+#     reference line as "the average of two modes", not as a performance level.
+python src/seq_len_curve.py "$EXP" \
+    --arch MLPStackedPreNorm \
+    --baseline-path "$E140" \
+    --baseline-alg RealTimeActorCriticMLPStacked2 \
+    --baseline-end-frame 10000000
+
+# 4c. Pole magnitude per window, for the same reason as (3).
+python src/learning_curve.py "$EXP" \
+    --metrics rtu_r_mean \
+    --filter-alg-apertures \
+        BPTTActorCriticMLPStackedPreNorm_T1:9 BPTTActorCriticMLPStackedPreNorm_T8:9 \
+        BPTTActorCriticMLPStackedPreNorm_T16:9 BPTTActorCriticMLPStackedPreNorm_T32:9 \
+    --end-frame 10000000 \
+    --plot-name rtu_r_mean_by_window_prenorm \
+    --legend

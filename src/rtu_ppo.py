@@ -35,6 +35,7 @@ from algorithms.nn.BPTTACConv import BPTTActorCriticConv
 from algorithms.nn.BPTTACConvStacked import BPTTActorCriticConvStacked
 from algorithms.nn.BPTTACMLP import BPTTActorCriticMLP
 from algorithms.nn.BPTTACMLPStacked import BPTTActorCriticMLPStacked
+from algorithms.nn.BPTTACMLPStackedPreNorm import BPTTActorCriticMLPStackedPreNorm
 from algorithms.nn.RealTimeACConv import RealTimeActorCriticConv
 from algorithms.nn.RealTimeACConvMulti import RealTimeActorCriticConvMulti
 from algorithms.nn.RealTimeACConvHint import RealTimeActorCriticConvHint
@@ -1217,9 +1218,13 @@ def experiment(rng, config: TrainConfig):
         RealTimeActorCriticMLPStacked,
         BPTTActorCriticConvStacked,
         BPTTActorCriticMLPStacked,
+        BPTTActorCriticMLPStackedPreNorm,
     ):
         kwargs["n_blocks"] = config.n_blocks
-    if _agent_class is RealTimeActorCriticMLPStacked:
+    if _agent_class in (
+        RealTimeActorCriticMLPStacked,
+        BPTTActorCriticMLPStackedPreNorm,
+    ):
         kwargs["use_gating"] = config.use_gating
 
     # Create and initialize the network. `agent` is dynamically dispatched via
@@ -1275,6 +1280,7 @@ def experiment(rng, config: TrainConfig):
         RealTimeActorCriticMLPStacked,
         BPTTActorCriticConvStacked,
         BPTTActorCriticMLPStacked,
+        BPTTActorCriticMLPStackedPreNorm,
     )
     # Conv-Multi shares MLPMulti's 4-RTU carry and width-hidden_size RTU input.
     _is_multi_rtu = _agent_class in (
