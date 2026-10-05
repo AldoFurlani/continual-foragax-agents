@@ -94,6 +94,8 @@ def read_metrics_from_data(
                     for i in range(datas[run_id][col].dtype.width)
                 )
 
+        datas[run_id] = datas[run_id].with_columns(pl.col(pl.Float16).cast(pl.Float32))
+
         if "rewards" in datas[run_id].columns and (
             metrics is None
             or not metrics

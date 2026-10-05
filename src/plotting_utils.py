@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,7 +59,9 @@ LABEL_MAP: Dict[str, str] = {
     "PPO": "PPO",
     "PPO_128": "PPO",
     "PPO_LN_128": "PPO",
-    "PPO_LN_RT_128": "PPO (Simple Memory)",
+    "PPO_LN_128_1": "PPO",
+    "PPO_LN_RT_128": "PPO Simple Memory",
+    "PPO_LN_RT_128_1": "PPO Simple Memory",
     "PPO_LN_HINT_128": "PPO (CA)",
     "PPO_L2": "PPO (L2)",
     "ActorCriticMLP": "PPO",
@@ -123,6 +126,8 @@ LABEL_MAP: Dict[str, str] = {
     "RealTimeActorCriticMLP-l2": "RTU-PPO (L2)",
     "PPO-RTU": "RTU-PPO",
     "PPO-RTU_128": "RTU-PPO",
+    "PPO-RTU_LN_128_1": "RTU-PPO",
+    "PPO-RTU_LN_RT_128_1": "RTU-PPO Simple Memory",
     "PPO-RTU_L2": "RTU-PPO (L2)",
     "PPO-RTU_LN_128": "RTU-PPO (LN)",
     "PPO-RTU_LN_128_512": "RTU-PPO (LN, H512)",
@@ -136,6 +141,7 @@ LABEL_MAP: Dict[str, str] = {
     "DQN_Reset_Head": "DQN (Head Reset)",
     "DQN_Hare_and_Tortoise": "DQN (Hare & Tortoise)",
     "DQN_Shrink_and_Perturb": "DQN (S&P)",
+    "DQN_ReDo_PostLNScore": "DQN (ReDo)",
     "DQN_privileged": "DQN (Privileged)",
     "DQN_world": "DQN (World)",
     "DQN_LN_RT": "DQN (LN, RT)",
@@ -145,6 +151,7 @@ LABEL_MAP: Dict[str, str] = {
     "DRQN_LN_0_2": "DRQN (LN, 0-2)",
     "DRQN_0_2": "DRQN (0-2)",
     "PT_DQN": "PT DQN",
+    "PT_DQN_64": "PT DQN",
     "Search-Brown": "Search (Brown)",
     "Search-Brown-Avoid-Green": "Search (+B-G)",
     "Search-Morel": "Search (Morel)",
@@ -194,6 +201,14 @@ WEATHER_BIOME_COLORS: Dict[str, Any] = {
     "Hot": sunset_colormap(1.0),
 }
 
+BIG_BIOME_COLORS: Dict[str, Any] = {
+    "Biome 0": tc.colorsets["vibrant"].blue,
+    "Biome 1": tc.colorsets["vibrant"].orange,
+    "Biome 2": tc.colorsets["vibrant"].teal,
+    "Biome 3": tc.colorsets["vibrant"].magenta,
+    "Other": tc.colorsets["muted"].pale_grey,
+}
+
 # Algorithm color mapping (vibrant palette)
 _vibrant = tc.colorsets["vibrant"]
 _muted = tc.colorsets["muted"]
@@ -222,7 +237,7 @@ COLOR_MAP: Dict[str, Any] = {
     # Mapped label keys
     "RTU-PPO (CA)": _muted.rose,
     "DQN (CA)": _muted.olive,
-    "PPO (Simple Memory)": _vibrant.cyan,
+    "PPO Simple Memory": _vibrant.cyan,
     "RTU-PPO": _vibrant.magenta,
     "RTU-PPO (Frozen @ 5 M)": _vibrant.magenta,
     "Search": _vibrant.orange,
@@ -247,6 +262,18 @@ def get_biome_mapping(env: str) -> Dict[int, str]:
         return {-1: "Neither", 0: "Morel", 1: "Oyster"}
     if "Weather" in env:
         return {-1: "Neither", 0: "Hot", 1: "Cold"}
+    if "ForagaxBig" in env:
+        return {
+            0: "Biome 0",
+            1: "Biome 1",
+            2: "Biome 2",
+            3: "Biome 3",
+            4: "Other",
+            5: "Other",
+            6: "Other",
+            7: "Other",
+            8: "Other",
+        }
     raise ValueError(f"Unknown biome mapping for environment: {env}")
 
 
@@ -314,6 +341,33 @@ def load_data(experiment_path: Path) -> pl.DataFrame:
 # ---------------------
 # Data Filtering
 # ---------------------
+def _alg_requests_reward_trace(alg: str) -> bool:
+    alg = alg.lower()
+    return bool(re.search(r"(^|[_-])rt($|[_-])", alg)) or (
+        "reward_trace" in alg or "reward-trace" in alg
+    )
+
+
+def _reward_trace_filter_expr(df: pl.DataFrame, alg: str):
+    trace_col = "representation.use_reward_trace"
+    if trace_col not in df.columns:
+        return None
+
+    alg_df = df.filter(pl.col("alg") == alg)
+    if alg_df.is_empty():
+        return None
+
+    trace_enabled = pl.col(trace_col).fill_null(False).cast(pl.Boolean)
+    has_trace = alg_df.select(trace_enabled.any()).item()
+    has_no_trace = alg_df.select((~trace_enabled).any()).item()
+
+    if _alg_requests_reward_trace(alg) and has_trace:
+        return trace_enabled
+    if not _alg_requests_reward_trace(alg) and has_trace and has_no_trace:
+        return ~trace_enabled
+    return None
+
+
 def filter_by_alg_aperture(
     df: pl.DataFrame, filter_strings: Optional[List[str]]
 ) -> pl.DataFrame:
@@ -329,6 +383,10 @@ def filter_by_alg_aperture(
         if len(parts) > 1:
             aperture = int(parts[1])
             cond = cond & (pl.col("aperture") == aperture)
+
+        reward_trace_expr = _reward_trace_filter_expr(df, alg)
+        if reward_trace_expr is not None:
+            cond = cond & reward_trace_expr
 
         conditions.append(cond)
 

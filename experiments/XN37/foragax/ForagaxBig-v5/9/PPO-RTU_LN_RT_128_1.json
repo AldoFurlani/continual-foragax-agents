@@ -1,5 +1,5 @@
 {
-    "agent": "PPO-RTU_LN_128_1",
+    "agent": "PPO-RTU_LN_RT_128_1",
     "problem": "Foragax",
     "total_steps": 10000000,
     "metaParameters": {

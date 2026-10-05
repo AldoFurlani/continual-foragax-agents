@@ -9,8 +9,6 @@
 
 set -e
 
-module load arrow/19
-
 cp -R .venv $SLURM_TMPDIR
 
 export MPLBACKEND=TKAgg

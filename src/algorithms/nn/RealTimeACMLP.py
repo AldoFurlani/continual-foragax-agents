@@ -6,7 +6,7 @@ import numpy as np
 from flax.linen.initializers import constant, orthogonal
 
 from algorithms.nn.activations import get_activation
-from algorithms.nn.rtus.rtus import RTLRTUs, RTNLRTUs
+from algorithms.nn.rtus.rtus import RTLRTUs, RTNLRTUs, ExpRTLRTUs
 
 
 class RealTimeActorCriticMLP(nn.Module):
@@ -16,6 +16,7 @@ class RealTimeActorCriticMLP(nn.Module):
     activation: str = "tanh"
     cont: bool = False
     rtu_type: str = "linear_rtu"
+    alpha: float = 0.9
     use_sinusoidal_encoding: bool = False
     use_reward_trace: bool = False
     use_layernorm: bool = False
@@ -45,10 +46,14 @@ class RealTimeActorCriticMLP(nn.Module):
         """
         activation = get_activation(self.activation)
 
+        seq_kwargs = {}
         if self.rtu_type == "linear_rtu":
             seq_model = RTLRTUs
         elif self.rtu_type == "non_linear_rtu":
             seq_model = RTNLRTUs
+        elif self.rtu_type == "exp_rtu":
+            seq_model = ExpRTLRTUs
+            seq_kwargs["alpha"] = self.alpha  #need this because only exp_rtu class has an alpha config
         else:
             raise NotImplementedError
         rtu_activation = (
@@ -107,12 +112,14 @@ class RealTimeActorCriticMLP(nn.Module):
             params_type="exp_exp",
             activation=rtu_activation,
             name="actor_rtu",
+            **seq_kwargs
         )(actor_hidden, actor_embedding)
         critic_hidden, critic_embedding = seq_model(
             self.d_hidden,
             params_type="exp_exp",
             activation=rtu_activation,
             name="critic_rtu",
+            **seq_kwargs
         )(critic_hidden, critic_embedding)
         # RTU output is post-nonlinearity: RTLRTUs/RTNLRTUs apply
         # `act_options[self.activation]` to the concatenated recurrent state

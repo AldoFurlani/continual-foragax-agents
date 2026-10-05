@@ -196,6 +196,12 @@ if hasattr(glues[0].agent, "_step_without_update"):
         state = replace(state, agent_state=agent_state)
         return state, interaction
 
+    # Unlike v_step_no_update, this does not advance the agent's update
+    # clock -- once state.steps >= freeze_steps, NNAgent._maybe_update_if_not_frozen
+    # returns the state completely unchanged (no clock advance either), so
+    # this matches that behavior exactly for steps that are already frozen.
+    v_step_frozen = jax.jit(v_step_skip)
+
     @jax.jit
     def v_step_update(state):
         state, interaction = v_step_skip(state)
@@ -461,6 +467,8 @@ def video_step(carry, _):
 
 
 no_update_step: Optional[Callable[..., Any]] = None
+frozen_step: Optional[Callable[..., Any]] = None
+update_fire_step: Optional[Callable[..., Any]] = None
 update_block: Optional[Callable[..., Any]] = None
 macro_block: Optional[Callable[..., Any]] = None
 periodic_freq: Optional[int] = None
@@ -474,6 +482,20 @@ if use_explicit_update_steps:
         return carry, data
 
     no_update_step = _no_update_step
+
+    def _frozen_step(carry, _):
+        carry, interaction = v_step_frozen(carry)
+        data = get_data(carry, interaction)
+        return carry, data
+
+    frozen_step = _frozen_step
+
+    def _update_fire_step(carry, _):
+        carry, interaction = v_step_update(carry)
+        data = get_data(carry, interaction)
+        return carry, data
+
+    update_fire_step = _update_fire_step
 
     def _update_block(carry, _):
         carry, interaction = v_step_update(carry)
@@ -519,6 +541,118 @@ if use_explicit_update_steps:
         macro_block = _macro_block
 
 
+def run_explicit_steps(
+    glue_states, agent_step_count, step_count, current_step, fire_trailing=False
+):
+    assert no_update_step is not None and update_block is not None
+    data_chunks = []
+    steps_remaining = step_count
+
+    steps_mod = agent_step_count % update_freq
+    prefix_count = min((update_freq - steps_mod) % update_freq, steps_remaining)
+    if prefix_count > 0:
+        prefix_step = scan_progress(prefix_count)(no_update_step)
+        glue_states, prefix_data = jax.lax.scan(
+            prefix_step, glue_states, jnp.arange(prefix_count), unroll=UNROLL
+        )
+        data_chunks.append(prefix_data)
+        steps_remaining -= prefix_count
+
+    block_count = steps_remaining // update_freq
+    if block_count > 0:
+        if blocks_per_macro is not None and block_count >= blocks_per_macro:
+            assert periodic_freq is not None and macro_block is not None
+            assert current_step % periodic_freq == 0, (
+                f"current_step ({current_step}) is not aligned to "
+                f"periodic_freq ({periodic_freq}); set save_every and "
+                f"video_every to multiples of periodic_freq, and only "
+                f"resume from checkpoints at multiples of periodic_freq"
+            )
+            n_macro = block_count // blocks_per_macro
+            macro_steps_per_iter = blocks_per_macro * update_freq
+            macro_steps = n_macro * macro_steps_per_iter
+            glue_states, macro_data = jax.lax.scan(
+                scan_progress(n_macro, unit_scale=macro_steps_per_iter)(
+                    macro_block
+                ),
+                glue_states,
+                jnp.arange(n_macro),
+            )
+            macro_data = tree_map(
+                lambda x: x.reshape((macro_steps, *x.shape[3:])),
+                macro_data,
+            )
+            data_chunks.append(macro_data)
+            steps_remaining -= macro_steps
+
+            trailing_blocks = block_count - n_macro * blocks_per_macro
+            if trailing_blocks > 0:
+                glue_states, trailing_data = jax.lax.scan(
+                    scan_progress(trailing_blocks, unit_scale=update_freq)(
+                        update_block
+                    ),
+                    glue_states,
+                    jnp.arange(trailing_blocks),
+                )
+                trailing_data = tree_map(
+                    lambda x: x.reshape(
+                        (trailing_blocks * update_freq, *x.shape[2:])
+                    ),
+                    trailing_data,
+                )
+                data_chunks.append(trailing_data)
+                steps_remaining -= trailing_blocks * update_freq
+        else:
+            glue_states, block_data = jax.lax.scan(
+                scan_progress(block_count, unit_scale=update_freq)(
+                    update_block
+                ),
+                glue_states,
+                jnp.arange(block_count),
+            )
+            block_data = tree_map(
+                lambda x: x.reshape((block_count * update_freq, *x.shape[2:])),
+                block_data,
+            )
+            data_chunks.append(block_data)
+            steps_remaining -= block_count * update_freq
+
+    if steps_remaining > 0 and fire_trailing:
+        # The trailing partial block's first step is update-aligned (the
+        # prefix + full blocks above preserve alignment), and this segment
+        # butts right up against the freeze boundary -- there is no later
+        # chunk left to catch this update up in, so if we don't fire it here
+        # it is permanently lost.
+        assert update_fire_step is not None
+        glue_states, fire_data = jax.lax.scan(
+            scan_progress(1)(update_fire_step),
+            glue_states,
+            jnp.arange(1),
+            unroll=UNROLL,
+        )
+        data_chunks.append(fire_data)
+        steps_remaining -= 1
+
+    if steps_remaining > 0:
+        glue_states, tail_data = jax.lax.scan(
+            scan_progress(steps_remaining)(no_update_step),
+            glue_states,
+            jnp.arange(steps_remaining),
+            unroll=UNROLL,
+        )
+        data_chunks.append(tail_data)
+
+    if not data_chunks:
+        return glue_states, None
+
+    data_chunk = (
+        data_chunks[0]
+        if len(data_chunks) == 1
+        else tree_map(lambda *xs: jnp.concatenate(xs, axis=0), *data_chunks)
+    )
+    return glue_states, data_chunk
+
+
 while current_step < n:
     next_save = ((current_step // save_every) + 1) * save_every
     next_video = ((current_step // video_every) + 1) * video_every
@@ -542,108 +676,64 @@ while current_step < n:
     data_chunk = None
     if no_video_steps_count > 0:
         agent_step_count = int(np.asarray(glue_states.agent_state.steps).reshape(-1)[0])
-        can_use_explicit_steps = (
-            use_explicit_update_steps
-            and update_freq > 1
-            and agent_step_count + no_video_steps_count <= freeze_steps
-        )
+        # A single outer-loop chunk can straddle the freeze boundary (e.g.
+        # whenever save_every/video_every are left at their defaults, the
+        # entire run is one chunk). Split it into a pre-freeze part (explicit
+        # update-skipping path) and a post-freeze part (cheap frozen path) --
+        # treating the chunk as all-or-nothing here would silently disable
+        # the explicit-update fast path for the *entire* run, not just the
+        # steps after freezing.
+        pre_freeze_count = int(min(no_video_steps_count, max(0.0, freeze_steps - agent_step_count)))
+        post_freeze_count = no_video_steps_count - pre_freeze_count
 
-        if can_use_explicit_steps:
-            assert no_update_step is not None and update_block is not None
-            data_chunks = []
-            steps_remaining = no_video_steps_count
-
-            steps_mod = agent_step_count % update_freq
-            prefix_count = min((update_freq - steps_mod) % update_freq, steps_remaining)
-            if prefix_count > 0:
-                prefix_step = scan_progress(prefix_count)(no_update_step)
-                glue_states, prefix_data = jax.lax.scan(
-                    prefix_step, glue_states, jnp.arange(prefix_count), unroll=UNROLL
-                )
-                data_chunks.append(prefix_data)
-                steps_remaining -= prefix_count
-
-            block_count = steps_remaining // update_freq
-            if block_count > 0:
-                if blocks_per_macro is not None and block_count >= blocks_per_macro:
-                    assert periodic_freq is not None and macro_block is not None
-                    assert current_step % periodic_freq == 0, (
-                        f"current_step ({current_step}) is not aligned to "
-                        f"periodic_freq ({periodic_freq}); set save_every and "
-                        f"video_every to multiples of periodic_freq, and only "
-                        f"resume from checkpoints at multiples of periodic_freq"
-                    )
-                    n_macro = block_count // blocks_per_macro
-                    macro_steps_per_iter = blocks_per_macro * update_freq
-                    macro_steps = n_macro * macro_steps_per_iter
-                    glue_states, macro_data = jax.lax.scan(
-                        scan_progress(n_macro, unit_scale=macro_steps_per_iter)(
-                            macro_block
-                        ),
-                        glue_states,
-                        jnp.arange(n_macro),
-                    )
-                    macro_data = tree_map(
-                        lambda x: x.reshape((macro_steps, *x.shape[3:])),
-                        macro_data,
-                    )
-                    data_chunks.append(macro_data)
-                    steps_remaining -= macro_steps
-
-                    trailing_blocks = block_count - n_macro * blocks_per_macro
-                    if trailing_blocks > 0:
-                        glue_states, trailing_data = jax.lax.scan(
-                            scan_progress(trailing_blocks, unit_scale=update_freq)(
-                                update_block
-                            ),
-                            glue_states,
-                            jnp.arange(trailing_blocks),
-                        )
-                        trailing_data = tree_map(
-                            lambda x: x.reshape(
-                                (trailing_blocks * update_freq, *x.shape[2:])
-                            ),
-                            trailing_data,
-                        )
-                        data_chunks.append(trailing_data)
-                        steps_remaining -= trailing_blocks * update_freq
-                else:
-                    glue_states, block_data = jax.lax.scan(
-                        scan_progress(block_count, unit_scale=update_freq)(
-                            update_block
-                        ),
-                        glue_states,
-                        jnp.arange(block_count),
-                    )
-                    block_data = tree_map(
-                        lambda x: x.reshape((block_count * update_freq, *x.shape[2:])),
-                        block_data,
-                    )
-                    data_chunks.append(block_data)
-                    steps_remaining -= block_count * update_freq
-
-            if steps_remaining > 0:
-                glue_states, tail_data = jax.lax.scan(
-                    scan_progress(steps_remaining)(no_update_step),
+        pre_chunk = None
+        if pre_freeze_count > 0:
+            if use_explicit_update_steps and update_freq > 1:
+                glue_states, pre_chunk = run_explicit_steps(
                     glue_states,
-                    jnp.arange(steps_remaining),
+                    agent_step_count,
+                    pre_freeze_count,
+                    current_step,
+                    fire_trailing=post_freeze_count > 0,
+                )
+            else:
+                glue_states, pre_chunk = jax.lax.scan(
+                    scan_progress(pre_freeze_count)(step),
+                    glue_states,
+                    jnp.arange(pre_freeze_count),
                     unroll=UNROLL,
                 )
-                data_chunks.append(tail_data)
 
-            data_chunk = (
-                data_chunks[0]
-                if len(data_chunks) == 1
-                else tree_map(lambda *xs: jnp.concatenate(xs, axis=0), *data_chunks)
+        post_chunk = None
+        if post_freeze_count > 0:
+            # Once frozen, no update ever happens again (see
+            # NNAgent._maybe_update_if_not_frozen), so this can always use the
+            # cheap frozen step regardless of update_freq. Without this, the
+            # loop would fall back to the generic `step()` path, whose freeze
+            # check is a `lax.cond` that degrades to `lax.select` under vmap
+            # -- it computes (and discards) a full update on every step.
+            if use_explicit_update_steps:
+                assert frozen_step is not None
+                glue_states, post_chunk = jax.lax.scan(
+                    scan_progress(post_freeze_count)(frozen_step),
+                    glue_states,
+                    jnp.arange(post_freeze_count),
+                    unroll=UNROLL,
+                )
+            else:
+                glue_states, post_chunk = jax.lax.scan(
+                    scan_progress(post_freeze_count)(step),
+                    glue_states,
+                    jnp.arange(post_freeze_count),
+                    unroll=UNROLL,
+                )
+
+        if pre_chunk is not None and post_chunk is not None:
+            data_chunk = tree_map(
+                lambda a, b: jnp.concatenate([a, b], axis=0), pre_chunk, post_chunk
             )
         else:
-            no_video_steps = jnp.arange(no_video_steps_count)
-            glue_states, data_chunk = jax.lax.scan(
-                scan_progress(no_video_steps_count)(step),
-                glue_states,
-                no_video_steps,
-                unroll=UNROLL,
-            )
+            data_chunk = pre_chunk if pre_chunk is not None else post_chunk
 
     frames = None
     data_chunk_video = None

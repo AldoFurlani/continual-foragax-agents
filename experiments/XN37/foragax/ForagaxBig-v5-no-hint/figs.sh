@@ -7,3 +7,10 @@ python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5-no-hint --pl
 python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5-no-hint --plot-name horizontal --filter-alg-apertures Search-Oracle PPO_LN_128_1_crelu:9 PPO_LN_RT_128_1_crelu:9 PPO-RTU_LN_128_1_crelu:9 --plot-avg --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 40
 
 python src/grouped_biome_bar.py experiments/XN37/foragax/ForagaxBig-v5-no-hint --filter-alg-apertures Search-Oracle PPO_LN_128_1_crelu:9 PPO_LN_RT_128_1_crelu:9 PPO-RTU_LN_128_1_crelu:9 --plot-name biome-bar-horizontal --font-size 40
+
+
+python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5-no-hint --plot-name ForagaxBig-v5-no-hint --filter-alg-apertures Search-Oracle Search-9 PPO_LN_128_1:9 PPO_LN_RT_128_1:9 PPO-RTU_LN_128_1:9 PPO-RTU_LN_RT_128_1:9 --plot-avg --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 40
+
+python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5-no-hint  --plot-name ForagaxBig-v5-no-hint-smooth-curve --filter-alg-apertures Search-Oracle Search-9 PPO_LN_128_1:9 PPO_LN_RT_128_1:9 PPO-RTU_LN_128_1:9 PPO-RTU_LN_RT_128_1:9 --disable-fov --no-legend --end-frame 10000000 --font-size 40 --metric ewm_reward_5
+
+python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5-no-hint  --plot-name ForagaxBig-v5-no-hint-smooth-bar --filter-alg-apertures Search-Oracle Search-9 PPO_LN_128_1:9 PPO_LN_RT_128_1:9 PPO-RTU_LN_128_1:9 PPO-RTU_LN_RT_128_1:9 --plot-avg --plot-bar-only --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 40 --metric ewm_reward_5

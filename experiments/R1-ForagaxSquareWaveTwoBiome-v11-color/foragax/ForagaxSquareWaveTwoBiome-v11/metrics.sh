@@ -22,27 +22,27 @@ export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_thread
 export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
 export JAX_PLATFORMS=cpu
 
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2 -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-reset -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-reset_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_tanh -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2 -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-reset -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-reset_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_tanh -f 9
 
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048 -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048-l2-init -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048-l2-init_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048_crelu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO_LN_2048_crelu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048 -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048-l2-init -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048-l2-init_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048_crelu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO-RTU_LN_2048_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a PPO_LN_2048_crelu -f 9
 
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init_relu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP_crelu -f 9
-#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init_relu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP_crelu -f 9
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP_relu -f 9
 
 $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2_2 -f 9
 $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R1-ForagaxSquareWaveTwoBiome-v11-color/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init_2 -f 9

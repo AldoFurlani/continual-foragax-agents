@@ -107,6 +107,8 @@ class LogEnvState:
 class TrainConfig:
     # ---- STATIC (uniform across vmapped runs) ----
     d_hidden: int = struct.field(pytree_node=False)
+    rtu_type: str = struct.field(pytree_node=False)
+    rtu_alpha: float = struct.field(pytree_node=False)
     hidden_size: int = struct.field(pytree_node=False)
     activation: str = struct.field(pytree_node=False)
     agent_type: str = struct.field(pytree_node=False)
@@ -133,6 +135,7 @@ class TrainConfig:
     # residual blocks and whether residual adds are replaced by GTrXL GRU gates.
     n_blocks: int = struct.field(pytree_node=False)
     use_gating: bool = struct.field(pytree_node=False)
+    use_midlayer_layernorm: bool = struct.field(pytree_node=False)
     conv: str = struct.field(pytree_node=False)
     allocate_frames: bool = struct.field(pytree_node=False)
     video_length: int = struct.field(pytree_node=False)
@@ -1214,6 +1217,10 @@ def experiment(rng, config: TrainConfig):
         kwargs["conv"] = config.conv
     if _agent_class is ActorCriticMLP:
         kwargs["use_middle_layer"] = config.use_middle_layer
+        kwargs["use_midlayer_layernorm"] = config.use_midlayer_layernorm
+    if _agent_class is RealTimeActorCriticMLP:
+        kwargs["rtu_type"] = config.rtu_type
+        kwargs["alpha"] = config.rtu_alpha
     if _agent_class in (
         RealTimeActorCriticMLPStacked,
         BPTTActorCriticConvStacked,
@@ -1562,35 +1569,20 @@ def experiment(rng, config: TrainConfig):
             )
             return train_state, rng
 
-    # NTK / churn metrics: collect a fixed batch of reference observations from a
-    # short random-policy rollout.  This branches off the env at its reset state
-    # via a derived key (rng is not consumed, so the training stream is
-    # unaffected) and the rollout's terminal state is discarded.  `reward_dim`
-    # is the width of the `last_reward` feature (1, or 1 + hint_dim for hint
-    # envs), needed to build zero-padded reference obs tuples.
+    # NTK / churn metrics reference batch.  No fixed batch is collected here: in
+    # a non-stationary env a frozen reference set drifts off-distribution, so the
+    # reference batch is instead sampled fresh from the *current* policy at each
+    # metric step via a short probe rollout (see `experiment_step`).  This keeps
+    # it on the current state distribution and held out from the update being
+    # measured.  `reward_dim` is the width of the `last_reward` feature (1, or
+    # 1 + hint_dim for hint envs), needed to build the reference obs tuples.
     reward_dim = hint_shape[0]
-    if config.compute_ntk:
-        ref_rng = jax.random.fold_in(rng, 7919)
-
-        def _ref_step(carry, _):
-            r, st = carry
-            r, a_rng, s_rng = jax.random.split(r, 3)
-            ref_action = jax.random.randint(a_rng, (), 0, action_dim)
-            ref_obs, st, _, _, _ = env.step(s_rng, st, ref_action, env.default_params)
-            ref_img = ref_obs["image"] if isinstance(ref_obs, Mapping) else ref_obs
-            return (r, st), ref_img
-
-        (_, _), x_ref = jax.lax.scan(
-            _ref_step, (ref_rng, env_state), None, length=config.n_ref
-        )
-    else:
-        x_ref = None
 
     # Weight-drift reference: a frozen copy of theta_0 for the ||theta - theta_0||
     # metric.  Deliberately independent of `use_l2_init` (which only allocates
     # `initial_params` when the mitigation is on) so drift is measurable for the
     # vanilla agent too -- enabling an apples-to-apples vanilla-vs-w0-reg compare.
-    # Closed over by experiment_step like `x_ref`; never threaded through carry.
+    # Closed over by experiment_step; never threaded through carry.
     if config.compute_weight_drift:
         drift_w0 = jax.tree_util.tree_map(lambda p: p.copy(), network_params)
     else:
@@ -1859,17 +1851,38 @@ def experiment(rng, config: TrainConfig):
             )
 
         # NTK rank / condition number and per-update churn for the value and
-        # policy heads, evaluated on the fixed reference batch whenever this
-        # update's env-step window crosses a multiple of ntk_freq.  ntk_freq is
-        # in *env steps* (matching the DQN ntk_freq and this file's
+        # policy heads, evaluated on a fresh probe-rollout reference batch
+        # whenever this update's env-step window crosses a multiple of ntk_freq.
+        # ntk_freq is in *env steps* (matching the DQN ntk_freq and this file's
         # reset_interval / sp_interval), but metrics can only be produced at
         # update boundaries, so the finest achievable spacing is rollout_steps.
-        # lax.cond skips the (expensive) Jacobian work on non-metric updates;
-        # disabled updates / heads report NaN.  Emitted as per-update scalars.
+        # lax.cond skips the (expensive) Jacobian + probe work on non-metric
+        # updates; disabled updates / heads report NaN.  Emitted as per-update
+        # scalars.
         if config.compute_ntk:
 
             def _do_ntk(_):
-                assert x_ref is not None  # always an array when compute_ntk is True
+                # Probe rollout: step the env n_ref times with the *current*
+                # (post-update) policy from the current env state to obtain a
+                # reference batch that is on the current state distribution and
+                # held out from this update's training data.  It reuses the same
+                # `env_step` body as the real rollout but runs on a derived RNG
+                # (training RNG stream untouched) and its transitions are
+                # discarded -- only their observation images feed the metrics.
+                # env_step_state is the post-rollout runner_state; we swap in the
+                # current train_state (index 0) and the probe RNG (index 9).
+                probe_rng = jax.random.fold_in(rng, 104729)
+                probe_runner_state = (
+                    train_state,
+                    *env_step_state[1:9],  # gymnax_state .. hint_trace (post-rollout)
+                    probe_rng,
+                    env_step_state[10],  # hstate (post-rollout)
+                )
+                _, (probe_traj, _) = jax.lax.scan(
+                    env_step, probe_runner_state, length=config.n_ref
+                )
+                x_ref = probe_traj.obs[0]  # reference images, [n_ref, H, W, C]
+
                 return compute_ppo_metrics(
                     train_state.apply_fn,
                     ntk_params_before,
@@ -1879,6 +1892,7 @@ def experiment(rng, config: TrainConfig):
                     action_dim,
                     reward_dim,
                     config.chunked_ref,
+                    labels,
                     compute_value=True,
                     compute_policy=True,
                 )
@@ -1892,17 +1906,18 @@ def experiment(rng, config: TrainConfig):
         else:
             ntk_metrics = nan_ppo_metrics()
 
-        # Weight norm: global L2 norm of the post-update params, gated on its own
-        # weight_norm_freq (independent of the NTK cadence above).  Cheap -- no
-        # reference batch or Jacobian -- so this is just an L2 reduction over the
-        # param tree.  NaN on non-metric updates / when disabled.  Per-update scalar.
+        # Weight norm: L2 norm of the post-update params, split pi / vf / total
+        # (like weight drift below), gated on its own weight_norm_freq
+        # (independent of the NTK cadence above).  Cheap -- no reference batch
+        # or Jacobian -- so this is just an L2 reduction over the param tree.
+        # NaN triple on non-metric updates / when disabled.  Per-update scalars.
         if config.compute_weight_norm:
             is_wn_step = _crossed_interval(
                 start_timestep, log_env_state.timestep, config.weight_norm_freq
             )
             weight_norm_metric = jax.lax.cond(
                 is_wn_step,
-                lambda _: weight_norm(ntk_params_after),
+                lambda _: weight_norm(ntk_params_after, labels),
                 lambda _: nan_weight_norm(),
                 operand=None,
             )
@@ -2052,14 +2067,16 @@ def experiment(rng, config: TrainConfig):
     (
         value_ntk_rank,
         value_ntk_eff_rank,
-        value_ntk_cond,
         value_churn,
         policy_ntk_rank,
         policy_ntk_eff_rank,
-        policy_ntk_cond,
         policy_churn,
+        weight_update_norm_pi,
+        weight_update_norm_vf,
+        weight_update_norm_total,
     ) = ntk_metrics
     weight_drift_pi, weight_drift_vf, weight_drift_total = weight_drift_metric
+    weight_norm_pi, weight_norm_vf, weight_norm_total = weight_norm_metric
     env_step_state = last_carry.carry[0]
     frames = env_step_state[2].frames
     return (
@@ -2074,14 +2091,15 @@ def experiment(rng, config: TrainConfig):
         (
             value_ntk_rank,
             value_ntk_eff_rank,
-            value_ntk_cond,
             value_churn,
             policy_ntk_rank,
             policy_ntk_eff_rank,
-            policy_ntk_cond,
             policy_churn,
+            weight_update_norm_pi,
+            weight_update_norm_vf,
+            weight_update_norm_total,
         ),
-        weight_norm_metric,
+        (weight_norm_pi, weight_norm_vf, weight_norm_total),
         (r_mean_metric, r_max_metric),
         (weight_drift_pi, weight_drift_vf, weight_drift_total),
         frames,
@@ -2221,6 +2239,8 @@ def main():
             activation = "crelu"
         config = TrainConfig(
             d_hidden=int(hypers["representation"]["d_hidden"]),
+            rtu_type=str(hypers["representation"].get("rtu_type", "linear_rtu")),
+            rtu_alpha=float(hypers["representation"].get("rtu_alpha", 0.9)),
             agent_type=exp.agent,
             hidden_size=int(hypers["representation"]["hidden"]),
             activation=activation,
@@ -2294,6 +2314,11 @@ def main():
             n_blocks=int(hypers.get("representation", {}).get("n_blocks", 2)),
             use_gating=bool(
                 hypers.get("representation", {}).get("use_gating", False)
+            ),
+            use_midlayer_layernorm=bool(
+                hypers.get("representation", {}).get(
+                    "use_midlayer_layernorm", False
+                )
             ),
             conv=str(hypers.get("representation", {}).get("conv", "Conv2D")),
             reward_trace_decay=float(
@@ -2370,14 +2395,15 @@ def main():
         (
             value_ntk_rank,
             value_ntk_eff_rank,
-            value_ntk_cond,
             value_churn,
             policy_ntk_rank,
             policy_ntk_eff_rank,
-            policy_ntk_cond,
             policy_churn,
+            weight_update_norm_pi,
+            weight_update_norm_vf,
+            weight_update_norm_total,
         ),
-        weight_norm_metric,
+        (weight_norm_pi, weight_norm_vf, weight_norm_total),
         (r_mean_metric, r_max_metric),
         (weight_drift_pi, weight_drift_vf, weight_drift_total),
         frames,
@@ -2413,13 +2439,16 @@ def main():
         run_metrics = {k: v[i] for k, v in metrics.items()}
         run_value_ntk_rank = value_ntk_rank[i]
         run_value_ntk_eff_rank = value_ntk_eff_rank[i]
-        run_value_ntk_cond = value_ntk_cond[i]
         run_value_churn = value_churn[i]
         run_policy_ntk_rank = policy_ntk_rank[i]
         run_policy_ntk_eff_rank = policy_ntk_eff_rank[i]
-        run_policy_ntk_cond = policy_ntk_cond[i]
         run_policy_churn = policy_churn[i]
-        run_weight_norm = weight_norm_metric[i]
+        run_weight_update_norm_pi = weight_update_norm_pi[i]
+        run_weight_update_norm_vf = weight_update_norm_vf[i]
+        run_weight_update_norm_total = weight_update_norm_total[i]
+        run_weight_norm_pi = weight_norm_pi[i]
+        run_weight_norm_vf = weight_norm_vf[i]
+        run_weight_norm_total = weight_norm_total[i]
         run_r_mean = r_mean_metric[i]
         run_r_max = r_max_metric[i]
         run_weight_drift_pi = weight_drift_pi[i]
@@ -2486,13 +2515,16 @@ def main():
             **run_metrics,
             value_ntk_rank=run_value_ntk_rank,
             value_ntk_eff_rank=run_value_ntk_eff_rank,
-            value_ntk_cond=run_value_ntk_cond,
             value_churn=run_value_churn,
             policy_ntk_rank=run_policy_ntk_rank,
             policy_ntk_eff_rank=run_policy_ntk_eff_rank,
-            policy_ntk_cond=run_policy_ntk_cond,
             policy_churn=run_policy_churn,
-            weight_norm=run_weight_norm,
+            weight_update_norm_pi=run_weight_update_norm_pi,
+            weight_update_norm_vf=run_weight_update_norm_vf,
+            weight_update_norm_total=run_weight_update_norm_total,
+            weight_norm_pi=run_weight_norm_pi,
+            weight_norm_vf=run_weight_norm_vf,
+            weight_norm_total=run_weight_norm_total,
             rtu_r_mean=run_r_mean,
             rtu_r_max=run_r_max,
             weight_drift_pi=run_weight_drift_pi,

@@ -40,8 +40,19 @@ def _default_bar_ratio(hue_order, args):
 
 
 def compute_figsize(num_metrics, hue_order, args):
-    base_width = 8.0
     base_height = 6.0
+
+    aspect_ratio = getattr(args, "aspect_ratio", None)
+    if (
+        aspect_ratio
+        and not args.plot_avg
+        and not args.plot_bar_only
+        and not args.grid
+        and not args.subplot_by_seed
+    ):
+        return (base_height * num_metrics * aspect_ratio, base_height * num_metrics), None
+
+    base_width = 8.0 * getattr(args, "width_scale", 1.0)
     font_size = getattr(args, "font_size", None) or 24
     extra_width = (
         max(0.0, (font_size - 24) * 0.2)
@@ -96,6 +107,30 @@ def main():
         nargs="+",
         default=None,
         help="Metrics to plot on the y-axis. Multiple metrics will be plotted as subplots.",
+    )
+    parser.add_argument(
+        "--width-scale",
+        type=float,
+        default=1.0,
+        help="Multiplier applied to the base figure width.",
+    )
+    parser.add_argument(
+        "--aspect-ratio",
+        type=float,
+        default=None,
+        help="Width:height ratio (e.g. 1.5 for 3:2). Overrides --width-scale for the plain curve plot.",
+    )
+    parser.add_argument(
+        "--num-xticks",
+        type=int,
+        default=5,
+        help="Approximate number of tick marks on the x-axis.",
+    )
+    parser.add_argument(
+        "--num-yticks",
+        type=int,
+        default=10,
+        help="Approximate number of tick marks on the y-axis.",
     )
     parser.add_argument(
         "--sample-type",
@@ -651,7 +686,7 @@ def main():
             formatted_metric = format_metric_name(metric)
             ylabel_map = get_ylabel_mapping(env)
             ylabel = ylabel_map.get(formatted_metric, formatted_metric)
-            if "ewm_reward" in metric:
+            if "ewm_reward" in metric or "rolling_reward" in metric:
                 ylabel = "Average Reward"
 
             if args.normalize:
@@ -674,11 +709,12 @@ def main():
             # Title: show algorithm names (mapped)
             title = " + ".join(get_mapped_label(a, LABEL_MAP, disable_fov=args.disable_fov) for a in cell_algs if a not in missing_algs)
             ax.set_title(title)
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+            ax.set_xmargin(0)
+            ax.xaxis.set_major_locator(ticker.LinearLocator(numticks=args.num_xticks))
             ax.xaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{x / 1000000:g}")
             )
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=args.num_yticks))
             despine(ax)
 
             # Handle legend for multi-algorithm cells
@@ -759,7 +795,7 @@ def main():
                 formatted_metric = format_metric_name(args.metrics[0])
                 ylabel_map = get_ylabel_mapping(env)
                 ylabel = ylabel_map.get(formatted_metric, formatted_metric)
-                if "ewm_reward" in args.metrics[0]:
+                if "ewm_reward" in args.metrics[0] or "rolling_reward" in args.metrics[0]:
                     ylabel = "Average Reward"
                 if args.normalize:
                     ylabel = f"Normalized {ylabel}"
@@ -769,11 +805,12 @@ def main():
             ax.set_ylabel(ylabel)
             ax.set_xlabel(r"Time steps $(\times 10^6)$")
             ax.set_title(f"Seed {seed}")
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+            ax.set_xmargin(0)
+            ax.xaxis.set_major_locator(ticker.LinearLocator(numticks=args.num_xticks))
             ax.xaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{x / 1000000:g}")
             )
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=args.num_yticks))
             despine(ax)
 
             if args.vertical_lines:
@@ -825,7 +862,7 @@ def main():
             formatted_metric = format_metric_name(metric)
             ylabel_map = get_ylabel_mapping(env)
             ylabel = ylabel_map.get(formatted_metric, formatted_metric)
-            if "ewm_reward" in metric:
+            if "ewm_reward" in metric or "rolling_reward" in metric:
                 ylabel = "Average Reward"
 
             if args.normalize:
@@ -869,11 +906,12 @@ def main():
                     ax.set_xlabel(r"Time steps $(\times 10^6)$")
                 else:
                     ax.set_xlabel("")  # Remove x-label for non-last subplots
-                ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+                ax.set_xmargin(0)
+                ax.xaxis.set_major_locator(ticker.LinearLocator(numticks=args.num_xticks))
                 ax.xaxis.set_major_formatter(
                     ticker.FuncFormatter(lambda x, _: f"{x / 1000000:g}")
                 )
-                ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=10))
+                ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=args.num_yticks))
                 despine(ax)
 
                 if args.vertical_lines:

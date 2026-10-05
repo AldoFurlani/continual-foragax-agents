@@ -211,13 +211,16 @@ class MADRQN(NNAgent):
         g = batch["gamma"][:, :-1]
         carry = batch["carry"][:, :-1]
         carryp = batch["carry"][:, 1:]
+        # reset[t] marks x[t] as an episode-start; reset_p[t] marks xp[t] (== x[t+1]) as one.
         reset = batch["reset"][:, :-1]
+        reset_p = batch["reset"][:, 1:]
 
         # Perform burn-in
         if self.burn_in_steps > 0:
             b_x, x = jnp.hsplit(x, [self.burn_in_steps])
             b_xp, xp = jnp.hsplit(xp, [self.burn_in_steps])
             b_reset, reset = jnp.hsplit(reset, [self.burn_in_steps])
+            b_reset_p, reset_p = jnp.hsplit(reset_p, [self.burn_in_steps])
             b_carry, carry = jnp.hsplit(carry, [self.burn_in_steps])
             b_carryp, carryp = jnp.hsplit(carryp, [self.burn_in_steps])
             b_last_a, last_a = jnp.hsplit(last_a, [self.burn_in_steps])
@@ -246,7 +249,7 @@ class MADRQN(NNAgent):
                         b_xp,
                         a=b_last_ap,
                         carry=b_carryp,
-                        reset=b_reset,
+                        reset=b_reset_p,
                         is_target=True,
                     )[1][:, -1, ...]
                 )
@@ -256,7 +259,7 @@ class MADRQN(NNAgent):
             0
         ]
         phi_p = self.phi(
-            target, xp, a=last_ap, carry=carryp, reset=reset, is_target=True
+            target, xp, a=last_ap, carry=carryp, reset=reset_p, is_target=True
         )[0]
 
         qs = self.q(params, phi)

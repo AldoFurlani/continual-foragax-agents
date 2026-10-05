@@ -1,0 +1,2 @@
+python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 5 --time 03:00:00 --runs 10 --entry src/rtu_ppo.py --force -e experiments/R2-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/9/ActorCriticMLP-l2-init_relu.json
+python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 5 --time 03:00:00 --runs 10 --entry src/rtu_ppo.py --force -e experiments/R2-plasticity/foragax-sweep/ForagaxSquareWaveTwoBiome-v11/9/ActorCriticMLP_tanh.json
