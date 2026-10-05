@@ -62,7 +62,7 @@ from utils.ppo_metrics import (
 from utils.preempt import TimeoutHandler
 
 sys.path.insert(0, os.path.abspath("/tmp/src"))
-from foragax.registry import make
+from environments.ForagaxAgentChannel import make
 
 PERIOD = 182500
 
