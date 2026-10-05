@@ -1,0 +1,56 @@
+{
+    "agent": "DQN_ReDo_PostLNScore",
+    "problem": "Foragax",
+    "total_steps": 1000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "epsilon": [0.05, 0.1, 0.25],
+        "target_refresh": 128,
+        "buffer_size": 1000,
+        "buffer_min_size": 50,
+        "batch": 32,
+        "environment": {
+            "env_id": "ForagaxSquareWaveTwoBiome-v11",
+            "aperture_size": 9,
+            "observation_type": "color"
+        },
+        "experiment": {
+            "seed_offset": 1000000
+        },
+        "gamma": 0.99,
+        "optimizer": {
+            "name": "Adam",
+            "alpha": [
+                0.003,
+                0.001,
+                0.0003,
+                0.0001,
+                3e-05
+            ],
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-5
+        },
+        "representation": {
+            "type": "ForagerNet",
+            "hidden": 64,
+            "d_hidden": 512,
+            "pre_core_layers": 1,
+            "core_layers": 1,
+            "post_core_layers": 1,
+            "conv": "None",
+            "use_layernorm": true,
+            "preactivation_layer_norm": false
+        },
+        "update_freq": 4,
+        "redo_freq": 2500,
+        "redo_threshold": [
+            0,
+            0.01,
+            0.025,
+            0.1
+        ],
+        "redo_reset_layernorm": true,
+        "redo_score_after_ln": true
+    }
+}

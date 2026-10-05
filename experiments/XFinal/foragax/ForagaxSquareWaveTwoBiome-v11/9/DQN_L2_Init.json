@@ -1,0 +1,38 @@
+{
+    "agent": "DQN_L2_Init",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "epsilon": 0.1,
+        "target_refresh": 128,
+        "buffer_size": 1000,
+        "buffer_min_size": 50,
+        "batch": 32,
+        "environment": {
+            "env_id": "ForagaxSquareWaveTwoBiome-v11",
+            "aperture_size": 9,
+            "observation_type": "color"
+        },
+        "experiment": {
+            "seed_offset": 0
+        },
+        "gamma": 0.99,
+        "lambda_l2_init": 1e-05,
+        "optimizer": {
+            "name": "Adam",
+            "alpha": 0.001,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-05
+        },
+        "representation": {
+            "type": "ForagerNet",
+            "hidden": 64,
+            "layers": 2,
+            "conv": "None",
+            "use_layernorm": true
+        },
+        "update_freq": 4
+    }
+}

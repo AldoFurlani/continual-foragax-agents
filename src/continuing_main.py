@@ -11,8 +11,9 @@ import pickle
 import socket
 import time
 import traceback
-from collections.abc import Mapping
-from dataclasses import replace
+from collections.abc import Callable, Mapping
+from dataclasses import fields, replace
+from typing import Any, Optional
 
 import jax
 import jax.numpy as jnp
@@ -29,11 +30,13 @@ from environments.Foragax import Foragax
 from experiment import ExperimentModel
 from problems.registry import getProblem
 from utils.checkpoint import Checkpoint
+from utils.dqn_metrics import DQNMetricsComputer
 from utils.preempt import TimeoutHandler
 from utils.rlglue import RlGlue
 
 
 UNROLL = 1
+
 
 # ------------------
 # -- Command Args --
@@ -193,6 +196,12 @@ if hasattr(glues[0].agent, "_step_without_update"):
         state = replace(state, agent_state=agent_state)
         return state, interaction
 
+    # Unlike v_step_no_update, this does not advance the agent's update
+    # clock -- once state.steps >= freeze_steps, NNAgent._maybe_update_if_not_frozen
+    # returns the state completely unchanged (no clock advance either), so
+    # this matches that behavior exactly for steps that are already frozen.
+    v_step_frozen = jax.jit(v_step_skip)
+
     @jax.jit
     def v_step_update(state):
         state, interaction = v_step_skip(state)
@@ -239,52 +248,51 @@ if not any(idx in video_idxs for idx in indices) and num_indices > 1:
 start_step = None
 save_every = first_hypers.get("experiment", {}).get("save_every", 10_001_000)
 video_every = first_hypers.get("experiment", {}).get("video_every", save_every)
-datas = {}
-datas["rewards"] = np.empty((len(indices), n), dtype=np.float16)
-datas["weight_change"] = np.empty((len(indices), n), dtype=np.float16)
-datas["squared_td_error"] = np.empty((len(indices), n), dtype=np.float16)
-datas["abs_td_error"] = np.empty((len(indices), n), dtype=np.float16)
-datas["loss"] = np.empty((len(indices), n), dtype=np.float16)
+ntk_freq = int(first_hypers.get("experiment", {}).get("ntk_freq", 0))
+agent_metrics_obj = getattr(glues[0].agent.state, "metrics", None)
+METRIC_NAMES: tuple[str, ...] = (
+    tuple(f.name for f in fields(agent_metrics_obj))
+    if agent_metrics_obj is not None
+    else ()
+)
 
 
-def get_agent_metrics(agent_state, batch_shape):
-    """Safely extract metrics from agent state, handling different agent types."""
-    weight_change = jnp.zeros(batch_shape)
-    squared_td_error = jnp.zeros(batch_shape)
-    abs_td_error = jnp.zeros(batch_shape)
-    loss = jnp.zeros(batch_shape)
+def get_agent_metrics(agent_state):
+    metrics = getattr(agent_state, "metrics", None)
+    if metrics is None:
+        return {}
+    return {k: getattr(metrics, k) for k in METRIC_NAMES}
 
-    if hasattr(agent_state, "metrics"):
-        metrics = agent_state.metrics
-        if hasattr(metrics, "weight_change"):
-            weight_change = metrics.weight_change
-        if hasattr(metrics, "squared_td_error"):
-            squared_td_error = metrics.squared_td_error
-        if hasattr(metrics, "abs_td_error"):
-            abs_td_error = metrics.abs_td_error
-        if hasattr(metrics, "loss"):
-            loss = metrics.loss
 
-    return weight_change, squared_td_error, abs_td_error, loss
+def reset_datas():
+    fresh_datas = {"rewards": np.empty((len(indices), n), dtype=np.float16)}
+    for k in METRIC_NAMES:
+        fresh_datas[k] = np.empty((len(indices), n), dtype=np.float16)
+    if ntk_freq > 0:
+        fresh_datas["churn_norm"] = np.full((len(indices), n), np.nan, dtype=np.float16)
+        fresh_datas["ntk_rank"] = np.full((len(indices), n), np.nan, dtype=np.float16)
+        fresh_datas["ntk_cond"] = np.full((len(indices), n), np.nan, dtype=np.float32)
+    if isinstance(glues[0].environment, Foragax):
+        fresh_datas["pos"] = np.empty((len(indices), n, 2), dtype=np.int32)
+        fresh_datas["biome_id"] = np.empty((len(indices), n), dtype=np.int32)
+        fresh_datas["biome_regret"] = np.empty((len(indices), n), dtype=np.float16)
+        fresh_datas["biome_rank"] = np.empty((len(indices), n), dtype=np.int32)
+        fresh_datas["object_collected_id"] = np.empty((len(indices), n), dtype=np.int32)
+        fresh_datas["hint"] = np.full((len(indices), n), -1, dtype=np.int32)
+        if "Weather" in glues[0].environment.env.name:
+            fresh_datas["temperatures"] = np.empty(
+                (len(indices), n, len(glues[0].environment.env.objects)),
+                dtype=np.float16,
+            )
+    return fresh_datas
+
+
+datas = reset_datas()
 
 
 if isinstance(glues[0].environment, Foragax):
-    datas["pos"] = np.empty((len(indices), n, 2), dtype=np.int32)
-    datas["biome_id"] = np.empty((len(indices), n), dtype=np.int32)
-    datas["biome_regret"] = np.empty((len(indices), n), dtype=np.float16)
-    datas["biome_rank"] = np.empty((len(indices), n), dtype=np.int32)
-    datas["object_collected_id"] = np.empty((len(indices), n), dtype=np.int32)
-    datas["hint"] = np.full((len(indices), n), -1, dtype=np.int32)
-
-    if "Weather" in glues[0].environment.env.name:
-        datas["temperatures"] = np.empty(
-            (len(indices), n, len(glues[0].environment.env.objects)), dtype=np.float16
-        )
 
     def get_data(carry, interaction):
-        weight_change, squared_td_error, abs_td_error, loss = get_agent_metrics(
-            carry.agent_state, interaction.reward.shape
-        )
         data = {
             "rewards": interaction.reward,
             "pos": carry.env_state.state.pos,
@@ -292,10 +300,7 @@ if isinstance(glues[0].environment, Foragax):
             "biome_regret": interaction.extra["biome_regret"],
             "biome_rank": interaction.extra["biome_rank"],
             "object_collected_id": interaction.extra["object_collected_id"],
-            "weight_change": weight_change,
-            "squared_td_error": squared_td_error,
-            "abs_td_error": abs_td_error,
-            "loss": loss,
+            **get_agent_metrics(carry.agent_state),
         }
 
         if isinstance(interaction.obs, Mapping) and "hint" in interaction.obs:
@@ -315,46 +320,15 @@ if isinstance(glues[0].environment, Foragax):
 else:
 
     def get_data(carry, interaction):
-        weight_change, squared_td_error, abs_td_error, loss = get_agent_metrics(
-            carry.agent_state, interaction.reward.shape
-        )
-        data = {
+        return {
             "rewards": interaction.reward,
-            "weight_change": weight_change,
-            "squared_td_error": squared_td_error,
-            "abs_td_error": abs_td_error,
-            "loss": loss,
+            **get_agent_metrics(carry.agent_state),
         }
-        return data
 
 
 initial_glue_states = [g.state for g in glues]
 loaded_checkpoints = [False] * len(indices)
 checkpoint_load_failed = False
-
-
-def reset_datas():
-    fresh_datas = {}
-    fresh_datas["rewards"] = np.empty((len(indices), n), dtype=np.float16)
-    fresh_datas["weight_change"] = np.empty((len(indices), n), dtype=np.float16)
-    fresh_datas["squared_td_error"] = np.empty((len(indices), n), dtype=np.float16)
-    fresh_datas["abs_td_error"] = np.empty((len(indices), n), dtype=np.float16)
-    fresh_datas["loss"] = np.empty((len(indices), n), dtype=np.float16)
-    if isinstance(glues[0].environment, Foragax):
-        fresh_datas["pos"] = np.empty((len(indices), n, 2), dtype=np.int32)
-        fresh_datas["biome_id"] = np.empty((len(indices), n), dtype=np.int32)
-        fresh_datas["biome_regret"] = np.empty((len(indices), n), dtype=np.float16)
-        fresh_datas["biome_rank"] = np.empty((len(indices), n), dtype=np.int32)
-        fresh_datas["object_collected_id"] = np.empty(
-            (len(indices), n), dtype=np.int32
-        )
-        fresh_datas["hint"] = np.full((len(indices), n), -1, dtype=np.int32)
-        if "Weather" in glues[0].environment.env.name:
-            fresh_datas["temperatures"] = np.empty(
-                (len(indices), n, len(glues[0].environment.env.objects)),
-                dtype=np.float16,
-            )
-    return fresh_datas
 
 
 for i, idx in enumerate(indices):
@@ -412,6 +386,12 @@ if start_step is None:
 else:
     logger.debug(f"Loaded checkpoints, resuming from step {start_step}")
 
+# Initialize DQN metrics computer and collect reference observations
+metrics_computer = DQNMetricsComputer(glues, datas, ntk_freq)
+if ntk_freq > 0:
+    x_ref_steps = first_hypers.get("experiment", {}).get("x_ref_steps", 500)
+    metrics_computer.collect_x_ref(glue_states, v_step, x_ref_steps)
+
 current_step = start_step
 training_pbar = tqdm(
     total=n,
@@ -464,10 +444,221 @@ def scan_progress(num_iters: int, unit_scale: int = 1):
     return wrap
 
 
+# Defined outside the outer milestone loop so trace overhead isn't paid
+# on every save/video iteration.
+update_freq = int(first_hypers.get("update_freq", 1))
+freeze_steps = first_hypers.get("freeze_steps", np.inf)
+if freeze_steps is None:
+    freeze_steps = np.inf
+freeze_steps = float(freeze_steps)
+
+
+def step(carry, _):
+    carry, interaction = v_step(carry)
+    data = get_data(carry, interaction)
+    return carry, data
+
+
+def video_step(carry, _):
+    frame = v_render(carry)
+    carry, interaction = v_step(carry)
+    data = get_data(carry, interaction)
+    return carry, (data, frame)
+
+
+no_update_step: Optional[Callable[..., Any]] = None
+frozen_step: Optional[Callable[..., Any]] = None
+update_fire_step: Optional[Callable[..., Any]] = None
+update_block: Optional[Callable[..., Any]] = None
+macro_block: Optional[Callable[..., Any]] = None
+periodic_freq: Optional[int] = None
+blocks_per_macro: Optional[int] = None
+
+if use_explicit_update_steps:
+
+    def _no_update_step(carry, _):
+        carry, interaction = v_step_no_update(carry)
+        data = get_data(carry, interaction)
+        return carry, data
+
+    no_update_step = _no_update_step
+
+    def _frozen_step(carry, _):
+        carry, interaction = v_step_frozen(carry)
+        data = get_data(carry, interaction)
+        return carry, data
+
+    frozen_step = _frozen_step
+
+    def _update_fire_step(carry, _):
+        carry, interaction = v_step_update(carry)
+        data = get_data(carry, interaction)
+        return carry, data
+
+    update_fire_step = _update_fire_step
+
+    def _update_block(carry, _):
+        carry, interaction = v_step_update(carry)
+        update_data = get_data(carry, interaction)
+        carry, skip_data = jax.lax.scan(
+            _no_update_step,
+            carry,
+            jnp.arange(update_freq - 1),
+            unroll=UNROLL,
+        )
+        block_data = tree_map(
+            lambda first, rest: jnp.concatenate(
+                [jnp.expand_dims(first, 0), rest], axis=0
+            ),
+            update_data,
+            skip_data,
+        )
+        return carry, block_data
+
+    update_block = _update_block
+
+    periodic_freq = getattr(glues[0].agent, "periodic_freq", None)
+    if periodic_freq is not None:
+        assert periodic_freq % update_freq == 0, (
+            f"agent.periodic_freq ({periodic_freq}) must be divisible "
+            f"by update_freq ({update_freq})"
+        )
+        blocks_per_macro = periodic_freq // update_freq
+        _v_periodic = jax.vmap(glues[0].agent._periodic_step)
+        _blocks_per_macro = blocks_per_macro
+
+        def _macro_block(carry, _):
+            carry, blocks_data = jax.lax.scan(
+                _update_block,
+                carry,
+                jnp.arange(_blocks_per_macro),
+                unroll=UNROLL,
+            )
+            new_agent_state = _v_periodic(carry.agent_state)
+            carry = replace(carry, agent_state=new_agent_state)
+            return carry, blocks_data
+
+        macro_block = _macro_block
+
+
+def run_explicit_steps(
+    glue_states, agent_step_count, step_count, current_step, fire_trailing=False
+):
+    assert no_update_step is not None and update_block is not None
+    data_chunks = []
+    steps_remaining = step_count
+
+    steps_mod = agent_step_count % update_freq
+    prefix_count = min((update_freq - steps_mod) % update_freq, steps_remaining)
+    if prefix_count > 0:
+        prefix_step = scan_progress(prefix_count)(no_update_step)
+        glue_states, prefix_data = jax.lax.scan(
+            prefix_step, glue_states, jnp.arange(prefix_count), unroll=UNROLL
+        )
+        data_chunks.append(prefix_data)
+        steps_remaining -= prefix_count
+
+    block_count = steps_remaining // update_freq
+    if block_count > 0:
+        if blocks_per_macro is not None and block_count >= blocks_per_macro:
+            assert periodic_freq is not None and macro_block is not None
+            assert current_step % periodic_freq == 0, (
+                f"current_step ({current_step}) is not aligned to "
+                f"periodic_freq ({periodic_freq}); set save_every and "
+                f"video_every to multiples of periodic_freq, and only "
+                f"resume from checkpoints at multiples of periodic_freq"
+            )
+            n_macro = block_count // blocks_per_macro
+            macro_steps_per_iter = blocks_per_macro * update_freq
+            macro_steps = n_macro * macro_steps_per_iter
+            glue_states, macro_data = jax.lax.scan(
+                scan_progress(n_macro, unit_scale=macro_steps_per_iter)(
+                    macro_block
+                ),
+                glue_states,
+                jnp.arange(n_macro),
+            )
+            macro_data = tree_map(
+                lambda x: x.reshape((macro_steps, *x.shape[3:])),
+                macro_data,
+            )
+            data_chunks.append(macro_data)
+            steps_remaining -= macro_steps
+
+            trailing_blocks = block_count - n_macro * blocks_per_macro
+            if trailing_blocks > 0:
+                glue_states, trailing_data = jax.lax.scan(
+                    scan_progress(trailing_blocks, unit_scale=update_freq)(
+                        update_block
+                    ),
+                    glue_states,
+                    jnp.arange(trailing_blocks),
+                )
+                trailing_data = tree_map(
+                    lambda x: x.reshape(
+                        (trailing_blocks * update_freq, *x.shape[2:])
+                    ),
+                    trailing_data,
+                )
+                data_chunks.append(trailing_data)
+                steps_remaining -= trailing_blocks * update_freq
+        else:
+            glue_states, block_data = jax.lax.scan(
+                scan_progress(block_count, unit_scale=update_freq)(
+                    update_block
+                ),
+                glue_states,
+                jnp.arange(block_count),
+            )
+            block_data = tree_map(
+                lambda x: x.reshape((block_count * update_freq, *x.shape[2:])),
+                block_data,
+            )
+            data_chunks.append(block_data)
+            steps_remaining -= block_count * update_freq
+
+    if steps_remaining > 0 and fire_trailing:
+        # The trailing partial block's first step is update-aligned (the
+        # prefix + full blocks above preserve alignment), and this segment
+        # butts right up against the freeze boundary -- there is no later
+        # chunk left to catch this update up in, so if we don't fire it here
+        # it is permanently lost.
+        assert update_fire_step is not None
+        glue_states, fire_data = jax.lax.scan(
+            scan_progress(1)(update_fire_step),
+            glue_states,
+            jnp.arange(1),
+            unroll=UNROLL,
+        )
+        data_chunks.append(fire_data)
+        steps_remaining -= 1
+
+    if steps_remaining > 0:
+        glue_states, tail_data = jax.lax.scan(
+            scan_progress(steps_remaining)(no_update_step),
+            glue_states,
+            jnp.arange(steps_remaining),
+            unroll=UNROLL,
+        )
+        data_chunks.append(tail_data)
+
+    if not data_chunks:
+        return glue_states, None
+
+    data_chunk = (
+        data_chunks[0]
+        if len(data_chunks) == 1
+        else tree_map(lambda *xs: jnp.concatenate(xs, axis=0), *data_chunks)
+    )
+    return glue_states, data_chunk
+
+
 while current_step < n:
     next_save = ((current_step // save_every) + 1) * save_every
     next_video = ((current_step // video_every) + 1) * video_every
-    next_milestone = min(next_save, next_video, n)
+    # Add ntk_freq as a milestone so metrics are computed with exact per-step states
+    next_ntk = ((current_step // ntk_freq) + 1) * ntk_freq if ntk_freq > 0 else n + 1
+    next_milestone = min(next_save, next_video, next_ntk, n)
     steps_in_iter = next_milestone - current_step
 
     if steps_in_iter <= 0:
@@ -482,106 +673,67 @@ while current_step < n:
         no_video_steps_count = steps_in_iter
         video_steps_count = 0
 
-    def video_step(carry, _):
-        frame = v_render(carry)
-        carry, interaction = v_step(carry)
-        data = get_data(carry, interaction)
-        return carry, (data, frame)
-
     data_chunk = None
     if no_video_steps_count > 0:
-        update_freq = int(first_hypers.get("update_freq", 1))
-
-        def step(carry, _):
-            carry, interaction = v_step(carry)
-            data = get_data(carry, interaction)
-            return carry, data
-
-        def no_update_step(carry, _):
-            carry, interaction = v_step_no_update(carry)
-            data = get_data(carry, interaction)
-            return carry, data
-
         agent_step_count = int(np.asarray(glue_states.agent_state.steps).reshape(-1)[0])
-        freeze_steps = first_hypers.get("freeze_steps", np.inf)
-        if freeze_steps is None:
-            freeze_steps = np.inf
-        freeze_steps = float(freeze_steps)
-        can_use_explicit_steps = (
-            use_explicit_update_steps
-            and update_freq > 1
-            and agent_step_count + no_video_steps_count <= freeze_steps
-        )
+        # A single outer-loop chunk can straddle the freeze boundary (e.g.
+        # whenever save_every/video_every are left at their defaults, the
+        # entire run is one chunk). Split it into a pre-freeze part (explicit
+        # update-skipping path) and a post-freeze part (cheap frozen path) --
+        # treating the chunk as all-or-nothing here would silently disable
+        # the explicit-update fast path for the *entire* run, not just the
+        # steps after freezing.
+        pre_freeze_count = int(min(no_video_steps_count, max(0.0, freeze_steps - agent_step_count)))
+        post_freeze_count = no_video_steps_count - pre_freeze_count
 
-        if can_use_explicit_steps:
-            data_chunks = []
-            steps_remaining = no_video_steps_count
-
-            steps_mod = agent_step_count % update_freq
-            prefix_count = min((update_freq - steps_mod) % update_freq, steps_remaining)
-            if prefix_count > 0:
-                prefix_step = scan_progress(prefix_count)(no_update_step)
-                glue_states, prefix_data = jax.lax.scan(
-                    prefix_step, glue_states, jnp.arange(prefix_count), unroll=UNROLL
-                )
-                data_chunks.append(prefix_data)
-                steps_remaining -= prefix_count
-
-            block_count = steps_remaining // update_freq
-            if block_count > 0:
-
-                def update_block(carry, _):
-                    carry, interaction = v_step_update(carry)
-                    update_data = get_data(carry, interaction)
-                    carry, skip_data = jax.lax.scan(
-                        no_update_step,
-                        carry,
-                        jnp.arange(update_freq - 1),
-                        unroll=UNROLL,
-                    )
-                    block_data = tree_map(
-                        lambda first, rest: jnp.concatenate(
-                            [jnp.expand_dims(first, 0), rest], axis=0
-                        ),
-                        update_data,
-                        skip_data,
-                    )
-                    return carry, block_data
-
-                glue_states, block_data = jax.lax.scan(
-                    scan_progress(block_count, unit_scale=update_freq)(update_block),
+        pre_chunk = None
+        if pre_freeze_count > 0:
+            if use_explicit_update_steps and update_freq > 1:
+                glue_states, pre_chunk = run_explicit_steps(
                     glue_states,
-                    jnp.arange(block_count),
+                    agent_step_count,
+                    pre_freeze_count,
+                    current_step,
+                    fire_trailing=post_freeze_count > 0,
                 )
-                block_data = tree_map(
-                    lambda x: x.reshape((block_count * update_freq, *x.shape[2:])),
-                    block_data,
-                )
-                data_chunks.append(block_data)
-                steps_remaining -= block_count * update_freq
-
-            if steps_remaining > 0:
-                glue_states, tail_data = jax.lax.scan(
-                    scan_progress(steps_remaining)(no_update_step),
+            else:
+                glue_states, pre_chunk = jax.lax.scan(
+                    scan_progress(pre_freeze_count)(step),
                     glue_states,
-                    jnp.arange(steps_remaining),
+                    jnp.arange(pre_freeze_count),
                     unroll=UNROLL,
                 )
-                data_chunks.append(tail_data)
 
-            data_chunk = (
-                data_chunks[0]
-                if len(data_chunks) == 1
-                else tree_map(lambda *xs: jnp.concatenate(xs, axis=0), *data_chunks)
+        post_chunk = None
+        if post_freeze_count > 0:
+            # Once frozen, no update ever happens again (see
+            # NNAgent._maybe_update_if_not_frozen), so this can always use the
+            # cheap frozen step regardless of update_freq. Without this, the
+            # loop would fall back to the generic `step()` path, whose freeze
+            # check is a `lax.cond` that degrades to `lax.select` under vmap
+            # -- it computes (and discards) a full update on every step.
+            if use_explicit_update_steps:
+                assert frozen_step is not None
+                glue_states, post_chunk = jax.lax.scan(
+                    scan_progress(post_freeze_count)(frozen_step),
+                    glue_states,
+                    jnp.arange(post_freeze_count),
+                    unroll=UNROLL,
+                )
+            else:
+                glue_states, post_chunk = jax.lax.scan(
+                    scan_progress(post_freeze_count)(step),
+                    glue_states,
+                    jnp.arange(post_freeze_count),
+                    unroll=UNROLL,
+                )
+
+        if pre_chunk is not None and post_chunk is not None:
+            data_chunk = tree_map(
+                lambda a, b: jnp.concatenate([a, b], axis=0), pre_chunk, post_chunk
             )
         else:
-            no_video_steps = jnp.arange(no_video_steps_count)
-            glue_states, data_chunk = jax.lax.scan(
-                scan_progress(no_video_steps_count)(step),
-                glue_states,
-                no_video_steps,
-                unroll=UNROLL,
-            )
+            data_chunk = pre_chunk if pre_chunk is not None else post_chunk
 
     frames = None
     data_chunk_video = None
@@ -612,7 +764,18 @@ while current_step < n:
     for i, idx in enumerate(indices):
         data_idx = tree_map(lambda x: x[:, i], data_chunk)
         for key in datas:
-            datas[key][i, current_step : current_step + steps_in_iter] = data_idx[key]
+            if key in data_idx:
+                datas[key][i, current_step : current_step + steps_in_iter] = data_idx[key]
+
+        # Compute NTK metrics at regular intervals throughout the chunk
+        if len(glues) > 1 or use_explicit_update_steps:
+            glue_state_idx = tree_map(lambda x: x[i], glue_states)
+        else:
+            glue_state_idx = glue_states
+
+        # Compute metrics at ntk_freq boundaries
+        if metrics_computer.should_compute(next_milestone):
+            metrics_computer.compute_and_store(i, next_milestone, glue_state_idx)
 
         if next_milestone % save_every == 0 and next_milestone < n:
             checkpoint_start_time = time.time()

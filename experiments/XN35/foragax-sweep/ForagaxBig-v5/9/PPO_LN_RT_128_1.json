@@ -1,0 +1,58 @@
+{
+    "agent": "PPO_LN_RT_128_1",
+    "problem": "Foragax",
+    "total_steps": 1000000,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxBig-v5",
+            "aperture_size": 9,
+            "observation_type": "rgb"
+        },
+        "experiment": {
+            "seed_offset": 1000000
+        },
+        "gamma": 0.99,
+        "gae_lambda": 0.95,
+        "rollout_steps": 128,
+        "epochs": 4,
+        "num_mini_batch": 1,
+        "clip_eps": 0.2,
+        "gradient_clipping": true,
+        "max_grad_norm": 0.5,
+        "vf_coef": 0.5,
+        "entropy_coef": [
+            0.01,
+            0.1,
+            1.0
+        ],
+        "optimizer_actor": {
+            "name": "Adam",
+            "alpha": [
+                1e-3,
+                3e-4,
+                1e-4
+            ],
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-05
+        },
+        "optimizer_critic": {
+            "name": "Adam",
+            "lr_scale": [
+                1.0,
+                10.0,
+                0.1
+            ],
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-05
+        },
+        "representation": {
+            "hidden": 64,
+            "d_hidden": 512,
+            "use_layernorm": true,
+            "use_reward_trace": true,
+            "conv": "PConv2DConv2D"
+        }
+    }
+}

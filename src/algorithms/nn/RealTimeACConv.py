@@ -1,14 +1,12 @@
 # Modified from esraaelelimy/continuing_ppo
-import functools
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
-
 import distrax
 import flax.linen as nn
 import jax.numpy as jnp
 import numpy as np
 from flax.linen.initializers import constant, orthogonal
 
-from algorithms.nn.rtus.rtus import *
+from algorithms.nn.activations import get_activation
+from algorithms.nn.rtus.rtus import RTLRTUs, RTNLRTUs
 
 
 class RealTimeActorCriticConv(nn.Module):
@@ -30,10 +28,7 @@ class RealTimeActorCriticConv(nn.Module):
         hidden: ((batch_size, d_hidden), (batch_size, d_hidden))
         obs: ((batch_size, H, W, C), (batch_size, action_dim), (batch_size, 1), ...)
         """
-        if self.activation == "relu":
-            activation = nn.relu
-        else:
-            activation = nn.tanh
+        activation = get_activation(self.activation)
 
         if self.rtu_type == "linear_rtu":
             seq_model = RTLRTUs
@@ -41,6 +36,11 @@ class RealTimeActorCriticConv(nn.Module):
             seq_model = RTNLRTUs
         else:
             raise NotImplementedError
+        rtu_activation = (
+            "crelu"
+            if self.activation == "crelu" and self.rtu_type == "linear_rtu"
+            else "relu"
+        )
 
         (actor_hidden, critic_hidden) = hidden
 
@@ -65,11 +65,6 @@ class RealTimeActorCriticConv(nn.Module):
             actor_embedding = activation(actor_embedding)
         # conv="none": skip all conv layers, flatten raw obs directly
         actor_embedding = jnp.reshape(actor_embedding, (actor_embedding.shape[0], -1))
-        actor_embedding = jnp.concatenate((
-            actor_embedding,
-            last_action_encoded, last_reward_plus),
-            axis=-1,
-        )
         actor_embedding = nn.Dense(
             self.hidden_size,
             kernel_init=orthogonal(np.sqrt(2)),
@@ -79,6 +74,11 @@ class RealTimeActorCriticConv(nn.Module):
             actor_embedding = nn.LayerNorm(epsilon=1e-05, name="actor_layernorm2",
         )(actor_embedding)
         actor_embedding = activation(actor_embedding)
+        actor_embedding = jnp.concatenate((
+            actor_embedding,
+            last_action_encoded, last_reward_plus),
+            axis=-1,
+        )
         actor_embedding_skip = actor_embedding
 
         # Critic conv stack
@@ -97,11 +97,6 @@ class RealTimeActorCriticConv(nn.Module):
         critic_embedding = jnp.reshape(
             critic_embedding, (critic_embedding.shape[0], -1)
         )
-        critic_embedding = jnp.concatenate((
-            critic_embedding,
-            last_action_encoded, last_reward_plus),
-            axis=-1,
-        )
         critic_embedding = nn.Dense(
             self.hidden_size,
             kernel_init=orthogonal(np.sqrt(2)),
@@ -111,10 +106,25 @@ class RealTimeActorCriticConv(nn.Module):
             critic_embedding = nn.LayerNorm(epsilon=1e-05, name="critic_layernorm2",
         )(critic_embedding)
         critic_embedding = activation(critic_embedding)
+        critic_embedding = jnp.concatenate((
+            critic_embedding,
+            last_action_encoded, last_reward_plus),
+            axis=-1,
+        )
         critic_embedding_skip = critic_embedding
 
-        actor_hidden, actor_embedding = seq_model(self.d_hidden, params_type="exp_exp", name="actor_rtu")(actor_hidden, actor_embedding)
-        critic_hidden, critic_embedding = seq_model(self.d_hidden, params_type="exp_exp", name="critic_rtu")(critic_hidden, critic_embedding)
+        actor_hidden, actor_embedding = seq_model(
+            self.d_hidden,
+            params_type="exp_exp",
+            activation=rtu_activation,
+            name="actor_rtu",
+        )(actor_hidden, actor_embedding)
+        critic_hidden, critic_embedding = seq_model(
+            self.d_hidden,
+            params_type="exp_exp",
+            activation=rtu_activation,
+            name="critic_rtu",
+        )(critic_hidden, critic_embedding)
         actor_embedding = jnp.concatenate((actor_embedding, actor_embedding_skip), axis=-1)
         critic_embedding = jnp.concatenate((critic_embedding, critic_embedding_skip), axis=-1)
 

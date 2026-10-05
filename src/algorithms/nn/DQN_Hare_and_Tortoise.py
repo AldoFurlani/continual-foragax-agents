@@ -3,8 +3,6 @@ from functools import partial
 from typing import Dict
 
 import jax
-import jax.lax
-import optax
 from ml_instrumentation.Collector import Collector
 
 import utils.chex as cxu
@@ -46,6 +44,8 @@ class DQN_Hare_and_Tortoise(DQN):
             hypers=hypers,
         )
 
+        self.periodic_freq = int(params["ht_steps"])
+
     @partial(jax.jit, static_argnums=0)
     def _update_target_network(self, state: AgentState, updates: int):
         tau = state.hypers.tau
@@ -54,22 +54,8 @@ class DQN_Hare_and_Tortoise(DQN):
         )
         return target_params
 
-    @partial(jax.jit, static_argnums=0)
-    def _step(
-        self,
-        state: AgentState,
-        reward: jax.Array,
-        obs: jax.Array,
-        extra: Dict[str, jax.Array],
-    ):
-        state, a = super()._step(state, reward, obs, extra)
-        state = jax.lax.cond(
-            state.steps % state.hypers.ht_steps == 0,
-            self._reset,
-            lambda s: s,
-            state,
-        )
-        return state, a
+    def _periodic_step(self, state: AgentState) -> AgentState:
+        return self._reset(state)
 
     @partial(jax.jit, static_argnums=0)
     def _reset(self, state: AgentState):

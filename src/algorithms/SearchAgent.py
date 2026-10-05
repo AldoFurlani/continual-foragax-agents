@@ -1,6 +1,6 @@
 from dataclasses import replace
 from functools import partial
-from typing import Dict, Optional, Tuple, Union, Mapping
+from typing import Dict, Optional, Tuple, Union, Mapping, cast
 
 import jax
 import jax.numpy as jnp
@@ -14,18 +14,34 @@ from utils.queue import Queue, dequeue, enqueue
 @cxu.dataclass
 class AgentState:
     key: jax.Array
+    steps: int = 0
 
 
 class SearchAgent(BaseAgent):
     def __init__(
         self,
-        observations: Tuple[int, ...],
+        observations: Union[Tuple[int, ...], Mapping[str, Tuple[int, ...]]],
         actions: int,
         params: Dict,
         collector: Collector,
         seed: int,
     ):
-        super().__init__(observations, actions, params, collector, seed)
+        super().__init__(
+            cast(Tuple[int, ...], observations),
+            actions,
+            params,
+            collector,
+            seed,
+        )
+        obs_shape = observations
+        if isinstance(observations, Mapping):
+            if "image" in observations:
+                obs_shape = observations["image"]
+            elif len(observations) == 1:
+                obs_shape = next(iter(observations.values()))
+            else:
+                first_key = sorted(observations.keys())[0]
+                obs_shape = observations[first_key]
         self.state = AgentState(
             key=self.key,
         )
@@ -46,7 +62,13 @@ class SearchAgent(BaseAgent):
         if len(self.channel_priorities):
             self.max_priority = max(self.channel_priorities.values())
         else:
-            self.max_priority = observations[-1]
+            num_channels = 0
+            if isinstance(obs_shape, tuple):
+                if len(obs_shape) >= 3:
+                    num_channels = obs_shape[-1]
+                elif len(obs_shape) == 1:
+                    num_channels = obs_shape[0]
+            self.max_priority = num_channels
         self.mode = params.get("mode", "aperture")
         self.nowrap = params.get("nowrap", False)
         # new option: use temperatures from extra to determine priorities
@@ -131,7 +153,7 @@ class SearchAgent(BaseAgent):
             obs = obs[:, :, :-1]
             num_channels -= 1
         else:
-            center_y, center_x = height // 2, width // 2
+            center_y, center_x = jnp.asarray(height // 2), jnp.asarray(width // 2)
 
         # Create priority map: higher values = higher priority
         priority_map = jnp.zeros((height, width))
@@ -230,8 +252,8 @@ class SearchAgent(BaseAgent):
         self,
         key: jax.Array,
         priority_map: jax.Array,
-        start_y: jax.Array,
-        start_x: jax.Array,
+        start_y: Union[jax.Array, int],
+        start_x: Union[jax.Array, int],
         height: int,
         width: int,
     ) -> tuple[jax.Array, int]:

@@ -3,8 +3,10 @@
 #SBATCH --job-name=E124-diwali_foragax-sweep_ForagaxDiwali-v5-v41_hypers
 #SBATCH --mem-per-cpu=8G
 #SBATCH --ntasks=1
-#SBATCH --output=../slurm-%j.out
+#SBATCH --output=/scratch/%u/logs/slurm-%j.out
 #SBATCH --time=01:00:00
+
+set -e
 
 module load arrow/19
 

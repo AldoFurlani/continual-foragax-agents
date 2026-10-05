@@ -1,0 +1,24 @@
+{
+    "agent": "Search-5",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxBig-v5",
+            "aperture_size": 5,
+            "observation_type": "object"
+        },
+        "experiment": {
+            "seed_offset": 0,
+            "video_length": 10000,
+            "video_every": 100000
+        },
+        "mode": "aperture",
+        "nowrap": false,
+        "reward_prioritization": true,
+        "channel_priorities": {
+            "2": -1
+        }
+    }
+}

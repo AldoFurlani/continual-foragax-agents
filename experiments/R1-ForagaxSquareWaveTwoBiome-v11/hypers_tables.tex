@@ -1,0 +1,128 @@
+%%% ==================== Swept Hyperparameters: DQN Family ==================== %%%
+\begin{table}[H]
+    \caption{Swept and agent-specific hyperparameters for DQN-based agents in Two Biome. All agents sweep step size $\alpha \in \{3 \times 10^{-3}, 10^{-3}, 3 \times 10^{-4}, 10^{-4}, 3 \times 10^{-5}\}$ and $\epsilon \in \{0.05, 0.1, 0.25\}$ unless noted.$^\dagger$}
+    \begin{center}
+        \begin{tabular}{lll}
+            \multicolumn{1}{l}{\bf Agent} & \multicolumn{1}{l}{\bf Hyperparameter} & \multicolumn{1}{l}{\bf Choices / Selected}
+            \\ \hline \\
+            DQN                  & $\alpha$       & $3 \times 10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\[4pt]
+            DQN + CReLU          & $\alpha$       & $3 \times 10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\[4pt]
+            DQN + L2             & $\alpha$       & $3 \times 10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\
+                                 & $\lambda_{\text{L2}} \in \{10^{-2}, 10^{-3}, 10^{-4}, 10^{-5}\}$ & $10^{-5}$ \\[4pt]
+            DQN + L2 Init        & $\alpha$       & $10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\
+                                 & $\lambda_{\text{L2 Init}} \in \{10^{-2}, 10^{-3}, 10^{-4}, 10^{-5}\}$ & $10^{-5}$ \\[4pt]
+            DQN + S\&P           & $\alpha$       & $10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\
+                                 & Shrink $\in \{0.8, 0.9\}$   & $0.9$ \\
+                                 & Noise $\in \{0.01, 0.001\}$ & $0.01$ \\
+                                 & S\&P interval  & 10{,}000 steps \\[4pt]
+            DQN + Reward Trace   & $\alpha$       & $3 \times 10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\
+                                 & Decay $\in \{0.9, 0.99\}$   & $0.9$ \\[4pt]
+            DRQN                 & $\alpha$       & $10^{-3}$ \\
+                                 & $\epsilon$     & $0.1$ \\
+                                 & Seq.\ len $\in \{32, 64\}$  & $32$ \\
+                                 & Minibatch size & 4 \\
+                                 & Burn-in steps  & 16 \\[4pt]
+            PT-DQN$^\dagger$     & $\alpha \in \{10^{-3}, 3\times10^{-4}, 10^{-4}\}$     & $3 \times 10^{-4}$ \\
+                                 & $\epsilon$                                              & $0.25$ \\
+                                 & PT decay $\in \{0.55, 0.75, 0.95\}$                   & $0.95$ \\
+                                 & PT $\alpha$ ratio $\in \{10^{-3}, 10^{-4}, 10^{-5}\}$ & $10^{-4}$ \\
+                                 & Hidden units   & 32 \\
+                                 & PT update frequency & 2{,}500 \\
+                                 & PT memory buffer size & 10{,}000 \\
+                                 & PT optimizer   & SGD \\
+        \end{tabular}
+    \end{center}
+    {\small $^\dagger$PT-DQN uses a smaller $\alpha$ sweep and hidden size 32.}
+    \label{tab:dqn_swept_hypers}
+\end{table}
+
+%%% ==================== DQN Family: Default Hyperparameters ==================== %%%
+\begin{table}[H]
+    \caption{Shared default hyperparameters for all DQN-based agents in Two Biome.}
+    \begin{center}
+        \begin{tabular}{ll}
+            \multicolumn{1}{l}{\bf Hyperparameter} & \multicolumn{1}{l}{\bf Value}
+            \\ \hline \\
+            Exploration strategy            & $\epsilon$-greedy \\
+            Update frequency                & 4 \\
+            Minibatch size                  & 32 \\
+            Replay memory size              & 1{,}000 \\
+            Minimum replay history          & 50 \\
+            Buffer sampling strategy        & uniform \\
+            Target network update frequency & 128 \\
+            Discount factor $\gamma$        & 0.99 \\
+            Optimizer                       & Adam \\
+            Adam $\beta_1$                  & 0.9 \\
+            Adam $\beta_2$                  & 0.999 \\
+            Adam $\epsilon$                 & $10^{-5}$ \\
+        \end{tabular}
+    \end{center}
+    \label{tab:dqn_defaults}
+\end{table}
+
+%%% ==================== Swept Hyperparameters: PPO Family ==================== %%%
+\begin{table}[H]
+    \caption{Swept and agent-specific hyperparameters for PPO-based agents in Two Biome. All agents sweep actor step size $\alpha_a \in \{10^{-3}, 3 \times 10^{-4}, 10^{-4}\}$, critic LR scale $\in \{0.1, 1.0, 10.0\}$ (the critic learning rate $\alpha_c$ is set to $\alpha_a \times \text{critic LR scale}$), and entropy coefficient $\in \{0.01, 0.1, 1.0\}$.}
+    \begin{center}
+        \begin{tabular}{lll}
+            \multicolumn{1}{l}{\bf Agent} & \multicolumn{1}{l}{\bf Hyperparameter} & \multicolumn{1}{l}{\bf Choices / Selected}
+            \\ \hline \\
+            PPO                  & $\alpha_a$      & $3 \times 10^{-4}$ \\
+                                 & Critic LR scale & $0.1$ \\
+                                 & Entropy coef.   & $0.01$ \\[4pt]
+            PPO + L2             & $\alpha_a$      & $10^{-3}$ \\
+                                 & Critic LR scale & $0.1$ \\
+                                 & Entropy coef.   & $0.01$ \\
+                                 & $\lambda_{\text{L2}} \in \{10^{-2}, 10^{-3}, 10^{-4}\}$ & $10^{-4}$ \\[4pt]
+            PPO + L2 Init        & $\alpha_a$      & $10^{-3}$ \\
+                                 & Critic LR scale & $0.1$ \\
+                                 & Entropy coef.   & $0.01$ \\
+                                 & $\lambda_{\text{L2 Init}} \in \{10^{-2}, 10^{-3}, 10^{-4}\}$ & $10^{-4}$ \\[4pt]
+            PPO + S\&P           & $\alpha_a$      & $3 \times 10^{-4}$ \\
+                                 & Critic LR scale & $0.1$ \\
+                                 & Entropy coef.   & $0.01$ \\
+                                 & Shrink $\in \{0.8, 0.9\}$   & $0.9$ \\
+                                 & Noise $\in \{0.01, 0.001\}$ & $0.01$ \\
+                                 & S\&P interval   & 10{,}000 steps \\[4pt]
+            PPO + Reward Trace   & $\alpha_a$      & $10^{-3}$ \\
+                                 & Critic LR scale & $0.1$ \\
+                                 & Entropy coef.   & $0.01$ \\
+                                 & Decay $\in \{0.9, 0.99\}$   & $0.9$ \\[4pt]
+            Real-Time PPO        & $\alpha_a$      & $3 \times 10^{-4}$ \\
+                                 & Critic LR scale & $10.0$ \\
+                                 & Entropy coef.   & $0.1$ \\
+        \end{tabular}
+    \end{center}
+    \label{tab:ppo_swept_hypers}
+\end{table}
+
+%%% ==================== PPO Family: Default Hyperparameters ==================== %%%
+\begin{table}[H]
+    \caption{Shared default hyperparameters for all PPO-based agents in Two Biome.}
+    \begin{center}
+        \begin{tabular}{ll}
+            \multicolumn{1}{l}{\bf Hyperparameter} & \multicolumn{1}{l}{\bf Value}
+            \\ \hline \\
+            Rollout steps                & 2{,}048 \\
+            Epochs                       & 4 \\
+            Number of mini-batches       & 32 \\
+            Clipping $\epsilon$          & 0.2 \\
+            Gradient clipping            & True \\
+            Max gradient norm            & 0.5 \\
+            Value function coefficient   & 0.5 \\
+            GAE $\lambda$                & 0.95 \\
+            Discount factor $\gamma$     & 0.99 \\
+            Optimizer                    & Adam \\
+            Adam $\beta_1$               & 0.9 \\
+            Adam $\beta_2$               & 0.999 \\
+            Adam $\epsilon$              & $10^{-5}$ \\
+        \end{tabular}
+    \end{center}
+    \label{tab:ppo_defaults}
+\end{table}

@@ -1,7 +1,7 @@
 {
     "agent": "ActorCriticMLP",
     "problem": "Foragax",
-    "total_steps": 10000000,
+    "total_steps": 10000,
     "metaParameters": {
         "environment": {
             "env_id": "ForagaxSquareWaveTwoBiome-v11",
@@ -9,7 +9,10 @@
             "observation_type": "color"
         },
         "experiment": {
-            "seed_offset": 0
+            "seed_offset": 0,
+            "ntk_freq": 2048,
+            "x_ref_steps": 100, 
+            "weight_norm_freq": 2048
         },
         "gamma": 0.99,
         "gae_lambda": 0.95,

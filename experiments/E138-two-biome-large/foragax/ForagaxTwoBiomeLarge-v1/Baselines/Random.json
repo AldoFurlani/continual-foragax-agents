@@ -1,0 +1,15 @@
+{
+    "agent": "Random",
+    "problem": "Foragax",
+    "total_steps": 500000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxTwoBiomeLarge-v1",
+            "aperture_size": 1
+        },
+        "experiment": {
+            "seed_offset": 0
+        }
+    }
+}

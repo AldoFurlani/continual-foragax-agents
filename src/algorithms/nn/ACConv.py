@@ -1,14 +1,11 @@
 # Modified from esraaelelimy/continuing_ppo
-import functools
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
-
 import distrax
 import flax.linen as nn
 import jax.numpy as jnp
 import numpy as np
 from flax.linen.initializers import constant, orthogonal
 
-from algorithms.nn.rtus.rtus import *
+from algorithms.nn.activations import get_activation
 
 
 class ActorCriticConv(nn.Module):
@@ -28,10 +25,7 @@ class ActorCriticConv(nn.Module):
         hidden: Any
         obs: ((batch_size, H, W, C), (batch_size, action_dim), (batch_size, 1), ...)
         '''
-        if self.activation == "relu":
-            activation = nn.relu
-        else:
-            activation = nn.tanh
+        activation = get_activation(self.activation)
 
         (obs, last_action_encoded, last_reward, sine, cosine, reward_trace) = obs
         last_reward_plus = last_reward
@@ -54,11 +48,11 @@ class ActorCriticConv(nn.Module):
             actor_embedding = activation(actor_embedding)
         # conv="none": skip all conv layers, flatten raw obs directly
         actor_embedding = jnp.reshape(actor_embedding, (actor_embedding.shape[0], -1))
-        actor_embedding = jnp.concatenate((actor_embedding, last_action_encoded, last_reward_plus), axis=-1)
         actor_embedding = nn.Dense(self.hidden_size, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0), name="actor_dense2")(actor_embedding)
         if self.use_layernorm:
             actor_embedding = nn.LayerNorm(epsilon=1e-05, name="actor_layernorm2")(actor_embedding)
         actor_embedding = activation(actor_embedding)
+        actor_embedding = jnp.concatenate((actor_embedding, last_action_encoded, last_reward_plus), axis=-1)
 
         # Critic conv stack
         critic_embedding = obs
@@ -74,11 +68,11 @@ class ActorCriticConv(nn.Module):
             critic_embedding = activation(critic_embedding)
         # conv="none": skip all conv layers, flatten raw obs directly
         critic_embedding = jnp.reshape(critic_embedding, (critic_embedding.shape[0], -1))
-        critic_embedding = jnp.concatenate((critic_embedding, last_action_encoded, last_reward_plus), axis=-1)
         critic_embedding = nn.Dense(self.hidden_size, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0), name="critic_dense2")(critic_embedding)
         if self.use_layernorm:
             critic_embedding = nn.LayerNorm(epsilon=1e-05, name="critic_layernorm2")(critic_embedding)
         critic_embedding = activation(critic_embedding)
+        critic_embedding = jnp.concatenate((critic_embedding, last_action_encoded, last_reward_plus), axis=-1)
 
         actor_embedding = nn.Dense(
             self.d_hidden,

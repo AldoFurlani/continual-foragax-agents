@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Generic, TypeVar
 
-import connectorx as cx
 import ml_instrumentation._utils.sqlite as sqlu
 import numpy as np
 import polars as pl
@@ -94,6 +93,8 @@ def read_metrics_from_data(
                     pl.col(col).arr.get(i).alias(f"{col}_{i}")
                     for i in range(datas[run_id][col].dtype.width)
                 )
+
+        datas[run_id] = datas[run_id].with_columns(pl.col(pl.Float16).cast(pl.Float32))
 
         if "rewards" in datas[run_id].columns and (
             metrics is None
@@ -186,6 +187,10 @@ def read_metrics_from_data(
     df = pl.concat(datas.values(), how="diagonal")
     del datas
     gc.collect()
+    # rewards / derived metrics are stored as float16 in the .npz files
+    # (continuing_main.py); polars panics on float16 group_by/agg, so widen
+    # to float32 before any downstream rlevaluation aggregation.
+    df = df.with_columns(pl.col(pl.Float16).cast(pl.Float32))
     return df.lazy()
 
 
@@ -209,21 +214,18 @@ def load_all_results_from_data(
     if metrics is None:
         metrics = tables - {"_metadata_"}
 
+    meta = (
+        pl.read_database("SELECT * FROM _metadata_", con).lazy()
+        if "_metadata_" in tables
+        else None
+    )
+
     df = read_metrics_from_data(
         data_path, metrics, ids, sample, sample_type, start, end
     )
 
-    if "_metadata_" not in tables:
+    if meta is None:
         return df.collect()
-
-    meta: pl.DataFrame = cx.read_sql(
-        f"sqlite://{db_path}",
-        "SELECT * FROM _metadata_",
-        return_type="polars",
-        partition_on="id",
-        partition_num=1,
-    )
-    meta = meta.lazy()
 
     if "id" not in df.columns:
         return pl.DataFrame()

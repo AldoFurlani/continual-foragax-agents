@@ -13,13 +13,26 @@ from experiment.ExperimentModel import ExperimentModel
 from utils.results import Result, ResultCollection
 
 
+def _slurm_max_workers() -> int:
+    cpt = int(os.environ.get("SLURM_CPUS_PER_TASK", "0") or 0)
+    nt = int(os.environ.get("SLURM_NTASKS", "0") or 0)
+    if cpt and nt:
+        return cpt * nt
+    if nt:
+        return nt
+    on_node = int(os.environ.get("SLURM_CPUS_ON_NODE", "0") or 0)
+    if on_node:
+        return on_node
+    return os.cpu_count() or 1
+
+
 def process_alg_result(alg_result: Result, group, aperture):
     alg = alg_result.filename
     print(f"Loading: {group} {alg}")
 
     exp_path = Path(alg_result.exp_path)
     env = exp_path.parent.parent.name
-    targets = [0, 1_000_000, 5_000_000, 10_000_000]
+    targets = [0, 1_000_000, 5_000_000, 10_000_000, 30_000_000]
     intervals = [1_000, 10_000, 100_000, 500_000, 1_000_000]
     n_samples = 500
 
@@ -70,7 +83,11 @@ def main(experiment_path: Path):
     for group, sub_results in results.groupby_directory(level=4):
         aperture = int(group) if group.isdigit() else None
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            # Cap was 4; the E140 aperture group now holds 5 algs (Stacked 1/2/4,
+            # plain RTU-PPO, Multi), so 4 left one alg serialised behind the rest.
+            max_workers=min(_slurm_max_workers(), len(sub_results), 8)
+        ) as executor:
             futures = [
                 executor.submit(process_alg_result, alg_result, group, aperture)
                 for alg_result in sub_results
@@ -93,6 +110,17 @@ def main(experiment_path: Path):
 
     all_df = pl.concat(dfs, how="diagonal_relaxed")
     all_df = all_df.sort(["env", "group", "alg", "id", "frame"])
+    # Defensive de-duplication: re-running training without clearing prior
+    # results can leave two metadata variants of the same (run, frame) in the
+    # collection (e.g. a config gained a hyperparameter between runs), which
+    # would otherwise double every row and silently tighten CIs. Keep the last
+    # (most recent) per natural key.
+    key = ["env", "group", "alg", "aperture", "id", "seed", "frame", "sample_type"]
+    key = [c for c in key if c in all_df.columns]
+    before = all_df.height
+    all_df = all_df.unique(subset=key, keep="last", maintain_order=True)
+    if all_df.height != before:
+        print(f"Dropped {before - all_df.height} duplicate rows (kept {all_df.height}).")
     all_df.write_parquet(output_path)
     print(f"Data saved to {output_path}")
 

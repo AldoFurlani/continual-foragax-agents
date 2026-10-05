@@ -1,7 +1,7 @@
 {
     "agent": "PPO_LN_128",
     "problem": "Foragax",
-    "total_steps": 10000000,
+    "total_steps": 2000000,
     "metaParameters": {
         "environment": {
             "env_id": "ForagaxBig-v5",
@@ -11,11 +11,14 @@
         "experiment": {
             "seed_offset": 0,
             "video_length": 10000,
-            "video_every": 100000
+            "video_every": 100000,
+            "ntk_freq": 50000, 
+            "x_ref_steps": 100,
+            "weight_norm_freq": 50000
         },
         "gamma": 0.99,
         "gae_lambda": 0.95,
-        "rollout_steps": 128,
+        "rollout_steps": 2048,
         "epochs": 4,
         "num_mini_batch": 32,
         "clip_eps": 0.2,

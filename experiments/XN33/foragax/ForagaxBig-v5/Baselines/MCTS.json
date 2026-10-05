@@ -1,0 +1,34 @@
+{
+    "agent": "MCTS",
+    "problem": "Foragax",
+    "total_steps": 50,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxBig-v5",
+            "aperture_size": -1,
+            "observation_type": "object"
+        },
+        "experiment": {
+            "seed_offset": 0,
+            "video_length": 1000,
+            "save_every": 50
+        },
+        "num_simulations": 200,
+        "max_depth": 100,
+        "pb_c_init": 8,
+        "dirichlet_fraction": 0,
+        "temperature": 0,
+        "gamma": 0.9,
+        "search_params": {
+            "mode": "world",
+            "nowrap": false,
+            "channel_priorities": {
+                "0": 2,
+                "1": 1,
+                "2": -1,
+                "3": 0
+            }
+        }
+    }
+}

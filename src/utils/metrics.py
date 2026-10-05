@@ -1,4 +1,84 @@
+import jax
+import jax.numpy as jnp
 import polars as pl
+
+
+def compute_churn(agent, x_ref, pred_before):
+    """Compute churn: norm of output change on reference data after training update.
+
+    Args:
+        agent: The agent with updated state
+        x_ref: Reference batch of observations
+        pred_before: Predictions on x_ref before the update
+
+    Returns:
+        Churn norm (scalar)
+    """
+    # Compute predictions with updated agent state
+    pred_after = agent._values(agent.state, x_ref)
+
+    # Handle dict output (multi-head agents)
+    if isinstance(pred_after, dict):
+        pred_after = pred_after.get("values", pred_after.get("v", list(pred_after.values())[0]))
+    if isinstance(pred_before, dict):
+        pred_before = pred_before.get("values", pred_before.get("v", list(pred_before.values())[0]))
+
+    # Compute norm of output change
+    churn_norm = jnp.linalg.norm(pred_after - pred_before)
+    return churn_norm
+
+
+def compute_ntk_metrics(agent, x_ref_sample, scalars=None):
+    """Compute NTK matrix rank and condition number.
+
+    Args:
+        agent: The agent with current state
+        x_ref_sample: Sample of reference observations (shape: [n_samples, ...])
+        scalars: Optional scalar features for each sample (shape: [n_samples, num_features])
+
+    Returns:
+        Tuple of (rank, condition_number) as scalars
+    """
+    state = agent.state
+
+    # Create dummy scalars if not provided
+    if scalars is None:
+        scalars = jnp.zeros((x_ref_sample.shape[0], 4))
+
+    def values_fn(params, x, s):
+        # Create a temporary state with given params
+        from dataclasses import replace
+        temp_state = replace(state, params=params)
+        # Add batch dimension since _values expects batched input
+        x_batched = jnp.expand_dims(x, 0)
+        s_batched = jnp.expand_dims(s, 0)
+        output = agent._values(temp_state, x_batched, s_batched)
+        # Convert dict output to array if needed
+        if isinstance(output, dict):
+            output = output.get("values", output.get("v", list(output.values())[0]))
+        # Remove batch dimension from output
+        return output[0]
+
+    # Compute Jacobians of output w.r.t. parameters
+    jacobian_fn = jax.vmap(jax.jacrev(values_fn, argnums=0), in_axes=(None, 0, 0))
+    jacobians = jacobian_fn(state.params, x_ref_sample, scalars)
+
+    # Flatten jacobians: convert pytree to flat array
+    def flatten_jacobians(jac_tree):
+        leaves = jax.tree_util.tree_leaves(jac_tree)
+        flat_leaves = [leaf.reshape(leaf.shape[0], -1) for leaf in leaves]
+        return jnp.concatenate(flat_leaves, axis=1)
+
+    jacobians_flat = flatten_jacobians(jacobians)
+
+    # Compute NTK matrix: [n_samples, n_samples]
+    ntk_matrix = jacobians_flat @ jacobians_flat.T
+
+    # Compute rank and condition number
+    rank = jnp.linalg.matrix_rank(ntk_matrix)
+    cond_number = jnp.linalg.cond(ntk_matrix)
+
+    return rank, cond_number
 
 
 def calculate_ewm_reward(df: pl.DataFrame):

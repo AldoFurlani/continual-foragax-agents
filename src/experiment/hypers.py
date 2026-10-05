@@ -30,7 +30,7 @@ def update_best_config(alg: str, report: HyperSelectionResult, exp_path: Path):
         for part in parts[:-1]:
             curr = curr[part]
             curr_sweep = curr_sweep[part]
-        if not isinstance(curr_sweep[parts[-1]], list):
+        if parts[-1] not in curr_sweep or not isinstance(curr_sweep[parts[-1]], list):
             continue
         if isinstance(best_config, np.integer):
             best_config = int(best_config)

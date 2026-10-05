@@ -4,8 +4,10 @@
 #SBATCH --mem=100G
 #SBATCH --nodes=1
 #SBATCH --ntasks=16
-#SBATCH --output=../slurm-%j.out
+#SBATCH --output=/scratch/%u/logs/slurm-%j.out
 #SBATCH --time=01:00:00
+
+set -e
 
 module load arrow/19
 
@@ -13,6 +15,7 @@ cp -R .venv $SLURM_TMPDIR
 
 export MPLBACKEND=TKAgg
 export OMP_NUM_THREADS=1
+export POLARS_MAX_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NPROC=1

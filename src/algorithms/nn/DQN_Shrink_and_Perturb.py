@@ -3,8 +3,6 @@ from functools import partial
 from typing import Dict
 
 import jax
-import jax.lax
-import optax
 from ml_instrumentation.Collector import Collector
 
 import utils.chex as cxu
@@ -48,16 +46,10 @@ class DQN_Shrink_and_Perturb(DQN):
             hypers=hypers,
         )
 
-    @partial(jax.jit, static_argnums=0)
-    def _maybe_update(self, state: AgentState) -> AgentState:
-        state = super()._maybe_update(state)
-        state = jax.lax.cond(
-            (state.steps % state.hypers.sp_steps == 0) & (state.steps > 0),
-            self._shrink_and_perturb,
-            lambda s: s,
-            state,
-        )
-        return state
+        self.periodic_freq = int(params["sp_steps"])
+
+    def _periodic_step(self, state: AgentState) -> AgentState:
+        return self._shrink_and_perturb(state)
 
     @partial(jax.jit, static_argnums=0)
     def _shrink_and_perturb(self, state: AgentState):

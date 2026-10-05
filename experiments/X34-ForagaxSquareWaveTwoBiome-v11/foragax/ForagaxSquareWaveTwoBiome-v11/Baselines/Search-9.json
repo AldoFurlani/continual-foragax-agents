@@ -1,0 +1,21 @@
+{
+    "agent": "Search-9",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxSquareWaveTwoBiome-v11",
+            "aperture_size": 9,
+            "observation_type": "object"
+        },
+        "experiment": {
+            "seed_offset": 0,
+            "video_length": 1000,
+            "save_every": 250010
+        },
+        "mode": "aperture",
+        "nowrap": false,
+        "reward_prioritization": true
+    }
+}

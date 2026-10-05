@@ -13,8 +13,8 @@ import flax.linen as nn
 # g = r cos(theta), phi = r sin(theta)
 
 """
-Direct parameterization: Learn r and theta directly. Options: clipping r to be positive, clipping r to be \in (0,1], no clipping.
-stable_r: if True, clip r to be \in (eps,1]
+Direct parameterization: Learn r and theta directly. Options: clipping r to be positive, clipping r to be \\in (0,1], no clipping.
+stable_r: if True, clip r to be \\in (eps,1]
 r.shape = (batch_size, n_hidden)
 theta.shape = (batch_size, n_hidden)
 """
@@ -30,7 +30,7 @@ def g_phi_direct_params(r, theta, stable_r=False, eps=1e-8):
 
 
 """
-Exp parameterization: Learn nu and theta. r = exp(-nu). Options: clipping r to be positive, clipping r to be \in (0,1], no clipping.
+Exp parameterization: Learn nu and theta. r = exp(-nu). Options: clipping r to be positive, clipping r to be \\in (0,1], no clipping.
 """
 
 
@@ -210,6 +210,11 @@ def linear_act(x):
 
 
 @jax.jit
+def crelu_act(x):
+    return jnp.concatenate((nn.relu(x), nn.relu(-x)), axis=-1)
+
+
+@jax.jit
 def drelu(x):
     return lax.select(x > 0, lax.full_like(x, 1), lax.full_like(x, 0))
 
@@ -229,6 +234,11 @@ def d_l2_norm(x, eps=1e-12):
     return jax.jacfwd(l2_norm)(x)
 
 
-act_options = {"relu": nn.relu, "tanh": nn.tanh, "linear": linear_act}
+act_options = {
+    "relu": nn.relu,
+    "tanh": nn.tanh,
+    "linear": linear_act,
+    "crelu": crelu_act,
+}
 
 d_act = {"relu": drelu, "tanh": dtanh, "linear": dlinear}

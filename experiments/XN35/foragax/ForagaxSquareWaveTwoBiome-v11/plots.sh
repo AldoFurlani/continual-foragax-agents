@@ -1,0 +1,2 @@
+python src/learning_curve.py experiments/XN35/foragax/ForagaxSquareWaveTwoBiome-v11 --plot-name RTU-PPO-128-crelu-comparison --filter-alg-apertures PPO-RTU_LN_128_1:9 PPO-RTU_LN_128_1_crelu:9 --plot-avg --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 20
+python src/learning_curve.py experiments/XN35/foragax/ForagaxSquareWaveTwoBiome-v11 --plot-name RTU-PPO-128-w0-comparison --filter-alg-apertures PPO-RTU_LN_128_1:9 PPO-RTU_LN_128_1-l2-init:9 --plot-avg --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 20

@@ -144,7 +144,7 @@ class DRQN(NNAgent):
     def _split_carry(self, carry: Any, split: int):
         if isinstance(carry, tuple):
             def _split(x):
-                left, right = jnp.hsplit(x, jnp.array([split]))
+                left, right = jnp.hsplit(x, [split])
                 return left, right
 
             split_tree = jax.tree.map(_split, carry)
@@ -152,7 +152,7 @@ class DRQN(NNAgent):
             right = jax.tree.map(lambda x: x[1], split_tree)
             return left, right
 
-        left, right = jnp.hsplit(carry, jnp.array([split]))
+        left, right = jnp.hsplit(carry, [split])
         return left, right
 
     def _set_carry_start(self, carry: Any, new_carry: Any):
@@ -256,24 +256,26 @@ class DRQN(NNAgent):
         # batch["carry"] is expected to have shape [B, T+1, *carry_shape], where carry at time t corresponds to the transition from x[t-1] to x[t]
         carry = self._slice_carry(batch["carry"], 0, -1)
         carryp = self._slice_carry(batch["carry"], 1, None)
+        # reset[t] marks x[t] as an episode-start; reset_p[t] marks xp[t] (== x[t+1]) as one.
         reset = batch["reset"][:, :-1]
+        reset_p = batch["reset"][:, 1:]
 
         scalars = batch["scalars"][:, :-1]
         scalars_p = batch["scalars"][:, 1:]
 
         # Perform burn-in
         if self.burn_in_steps > 0:
-            split_idx = jnp.array([self.burn_in_steps])
-            b_x, x = jnp.hsplit(x, split_idx)
-            b_xp, xp = jnp.hsplit(xp, split_idx)
-            b_reset, reset = jnp.hsplit(reset, split_idx)
+            b_x, x = jnp.hsplit(x, [self.burn_in_steps])
+            b_xp, xp = jnp.hsplit(xp, [self.burn_in_steps])
+            b_reset, reset = jnp.hsplit(reset, [self.burn_in_steps])
+            b_reset_p, reset_p = jnp.hsplit(reset_p, [self.burn_in_steps])
             b_carry, carry = self._split_carry(carry, self.burn_in_steps)
             b_carryp, carryp = self._split_carry(carryp, self.burn_in_steps)
-            b_scalars, scalars = jnp.hsplit(scalars, split_idx)
-            b_scalars_p, scalars_p = jnp.hsplit(scalars_p, split_idx)
-            _, a = jnp.hsplit(a, split_idx)
-            _, r = jnp.hsplit(r, split_idx)
-            _, g = jnp.hsplit(g, split_idx)
+            b_scalars, scalars = jnp.hsplit(scalars, [self.burn_in_steps])
+            b_scalars_p, scalars_p = jnp.hsplit(scalars_p, [self.burn_in_steps])
+            _, a = jnp.hsplit(a, [self.burn_in_steps])
+            _, r = jnp.hsplit(r, [self.burn_in_steps])
+            _, g = jnp.hsplit(g, [self.burn_in_steps])
 
             carry = self._set_carry_start(
                 carry,
@@ -299,7 +301,7 @@ class DRQN(NNAgent):
                             b_xp,
                             scalars=b_scalars_p,
                             carry=b_carryp,
-                            reset=b_reset,
+                            reset=b_reset_p,
                             is_target=True,
                         )[1]
                     )
@@ -310,7 +312,7 @@ class DRQN(NNAgent):
             params, x, scalars=scalars, carry=carry, reset=reset, is_target=False
         )[0]
         phi_p = self.phi(
-            target, xp, scalars=scalars_p, carry=carryp, reset=reset, is_target=True
+            target, xp, scalars=scalars_p, carry=carryp, reset=reset_p, is_target=True
         )[0]
 
         qs = self.q(params, phi)

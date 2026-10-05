@@ -18,12 +18,19 @@ class AccumulatedOutput:
 def accumulatingSequence(fs: Sequence[Layer]):
     def _inner(x: jax.Array):
         out: Dict[str, jax.Array] = {}
+        counts: Dict[str, int] = {}
 
         y = x
-        for f in fs:
+        for i, f in enumerate(fs):
             y = f(y)
             if isinstance(f, hk.Module):
-                out[f.name] = y
+                base = f.name
+            else:
+                base = getattr(f, "__name__", None) or f"step_{i}"
+            n = counts.get(base, 0)
+            counts[base] = n + 1
+            key = base if n == 0 else f"{base}_{n}"
+            out[key] = y
 
         return AccumulatedOutput(activations=out, out=y)
 

@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --account=aip-whitem
+#SBATCH --job-name=R1-ForagaxSquareWaveTwoBiome-v11_foragax_ForagaxSquareWaveTwoBiome-v11_metrics
+#SBATCH --mem-per-cpu=16G
+#SBATCH --ntasks=16
+#SBATCH --output=/scratch/%u/logs/slurm-%j.out
+#SBATCH --time=02:00:00
+
+set -e
+
+module load arrow/19
+
+cp -R .venv $SLURM_TMPDIR
+
+export MPLBACKEND=TKAgg
+export OMP_NUM_THREADS=1
+export POLARS_MAX_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NPROC=1
+export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
+export JAX_PLATFORMS=cpu
+
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLPReLU RealTimeActorCriticMLPReLU -f 9
+
+# One metric per agent
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP-l2-init_relu -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_tanh -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLP_tanh_2 -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLPReLU -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLPReLU_20m -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP-l2-init_relu -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLP_crelu -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU -f 9
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU RealTimeActorCriticMLP-l2-init_relu RealTimeActorCriticMLP_crelu -f 9 --plot-name RTU-PPO_metric_comparisons
+# $SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLPReLU ActorCriticMLP-l2-init_relu ActorCriticMLP_tanh ActorCriticMLP_tanh_2 -f 9 --plot-name PPO_metric_comparisons
+
+#$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a ActorCriticMLPReLU RealTimeActorCriticMLPReLU -f 9 --plot-name PPO_vs_RTU-PPO
+
+# Metrics for LOP vs noLOP
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU ActorCriticMLPReLU  -f 9 --plot-name NTKRank_LOP_vs_NoLOP --metrics ntk_rank
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU ActorCriticMLPReLU  -f 9 --plot-name NTKEffRank_LOP_vs_NoLOP --metrics ntk_eff_rank
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU ActorCriticMLPReLU  -f 9 --plot-name churn_LOP_vs_NoLOP --metrics churn
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU ActorCriticMLPReLU  -f 9 --plot-name weightnorm_LOP_vs_NoLOP --metrics weight_norm
+$SLURM_TMPDIR/.venv/bin/python scripts/plot_metrics.py -e experiments/R2-plasticity/foragax/ForagaxSquareWaveTwoBiome-v11 -a RealTimeActorCriticMLPReLU ActorCriticMLPReLU  -f 9 --plot-name weightupdatenorm_LOP_vs_NoLOP --metrics weight_update_norm

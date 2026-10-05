@@ -1,0 +1,12 @@
+{
+    "type": "single_node",
+    "time": "1:00:00",
+    "gpus": "l40s.4:1",
+    "cores": 1,
+    "threads_per_task": 1,
+    "mem_per_core": "32G",
+    "sequential": 1,
+    "tasks_per_core": 1024,
+    "tasks_per_vmap": 1024,
+    "xla_python_client_mem_fraction": 0.9
+}

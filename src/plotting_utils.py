@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,10 +59,13 @@ LABEL_MAP: Dict[str, str] = {
     "PPO": "PPO",
     "PPO_128": "PPO",
     "PPO_LN_128": "PPO",
-    "PPO_LN_RT_128": "PPO (Simple Memory)",
+    "PPO_LN_128_1": "PPO",
+    "PPO_LN_RT_128": "PPO Simple Memory",
+    "PPO_LN_RT_128_1": "PPO Simple Memory",
     "PPO_LN_HINT_128": "PPO (CA)",
     "PPO_L2": "PPO (L2)",
     "ActorCriticMLP": "PPO",
+    "ActorCriticMLPReLU": "PPO (ReLU)",
     "ActorCriticMLP-l2": "PPO (L2)",
     "ActorCriticMLP-l2-init": "PPO (L2 Init)",
     "ActorCriticMLP-world": "PPO (World)",
@@ -69,9 +73,61 @@ LABEL_MAP: Dict[str, str] = {
     "ActorCriticMLP-reset": "PPO (Head Reset)",
     "ActorCriticMLP-shrink-and-perturb": "PPO (S&P)",
     "RealTimeActorCriticMLP": "RTU-PPO",
+    "RealTimeActorCriticMLPReLU": "RTU-PPO (ReLU)",
+    "RealTimeActorCriticMLPMulti": "RTU-PPO (Multi)",
+    # Depth ablation: n_blocks [RTU + MLP] residual blocks. Deliberately NOT
+    # labelled "L1/L2/L4" as the plot.sh comments say -- "RTU-PPO (L2)" is
+    # already taken below by the L2-REGULARISED variant.
+    "RealTimeActorCriticMLPStacked1": "RTU-PPO (Stacked 1)",
+    "RealTimeActorCriticMLPStacked2": "RTU-PPO (Stacked 2)",
+    "RealTimeActorCriticMLPStacked4": "RTU-PPO (Stacked 4)",
+    # E141's two RTU-PPO agents on the unending forager. Conv-Multi is the
+    # two-RTU concat-skip stack; the plain Conv is the single-layer one.
+    "RealTimeActorCriticConv": "RTU-PPO Conv",
+    "RealTimeActorCriticConvMulti": "RTU-PPO Conv-Multi",
+    # T-BPTT variants (E142): same architecture as RTU-PPO, gradients through a
+    # truncated window instead of the real-time RTRL correction. T=1 is the
+    # control -- the window removed, architecture unchanged -- but that is a
+    # caption fact, not a label one: tagging only T=1 leaves every window legend
+    # ragged, so all windows read uniformly as "(T=N)".
+    "BPTTActorCriticMLP_T1": "T-BPTT (T=1)",
+    "BPTTActorCriticMLP_T4": "T-BPTT (T=4)",
+    "BPTTActorCriticMLP_T8": "T-BPTT (T=8)",
+    "BPTTActorCriticMLP_T16": "T-BPTT (T=16)",
+    "BPTTActorCriticMLP_T32": "T-BPTT (T=32)",
+    "BPTTActorCriticConv_T1": "T-BPTT Conv (T=1)",
+    "BPTTActorCriticConv_T2": "T-BPTT Conv (T=2)",
+    "BPTTActorCriticConv_T4": "T-BPTT Conv (T=4)",
+    "BPTTActorCriticConv_T8": "T-BPTT Conv (T=8)",
+    "BPTTActorCriticConv_T16": "T-BPTT Conv (T=16)",
+    # Stacked LRU-style backbone under T-BPTT: same window sweep, but the
+    # gradient now also crosses the two RTU blocks through time.
+    "BPTTActorCriticConvStacked_T1": "T-BPTT Conv-Stacked (T=1)",
+    "BPTTActorCriticConvStacked_T2": "T-BPTT Conv-Stacked (T=2)",
+    "BPTTActorCriticConvStacked_T4": "T-BPTT Conv-Stacked (T=4)",
+    "BPTTActorCriticConvStacked_T8": "T-BPTT Conv-Stacked (T=8)",
+    "BPTTActorCriticConvStacked_T16": "T-BPTT Conv-Stacked (T=16)",
+    "BPTTActorCriticMLPStacked_T1": "T-BPTT Stacked (T=1)",
+    "BPTTActorCriticMLPStacked_T2": "T-BPTT Stacked (T=2)",
+    "BPTTActorCriticMLPStacked_T4": "T-BPTT Stacked (T=4)",
+    "BPTTActorCriticMLPStacked_T8": "T-BPTT Stacked (T=8)",
+    "BPTTActorCriticMLPStacked_T16": "T-BPTT Stacked (T=16)",
+    # T=32 is in the v11 window set (1/8/16/32); without this entry
+    # get_mapped_label falls through to the raw agent name and the legend reads
+    # "BPTTActorCriticMLPStacked_T32 (FOV 9)" beside "T-BPTT Stacked (T=16)".
+    "BPTTActorCriticMLPStacked_T32": "T-BPTT Stacked (T=32)",
+    # Same stack under the RTRL agent's block topology (two pre-norm residuals
+    # + rtu_proj) rather than LRU's SequenceLayer, to separate topology from
+    # gradient scheme. Labelled "Stacked-PreNorm" for the headline difference.
+    "BPTTActorCriticMLPStackedPreNorm_T1": "T-BPTT Stacked-PreNorm (T=1)",
+    "BPTTActorCriticMLPStackedPreNorm_T8": "T-BPTT Stacked-PreNorm (T=8)",
+    "BPTTActorCriticMLPStackedPreNorm_T16": "T-BPTT Stacked-PreNorm (T=16)",
+    "BPTTActorCriticMLPStackedPreNorm_T32": "T-BPTT Stacked-PreNorm (T=32)",
     "RealTimeActorCriticMLP-l2": "RTU-PPO (L2)",
     "PPO-RTU": "RTU-PPO",
     "PPO-RTU_128": "RTU-PPO",
+    "PPO-RTU_LN_128_1": "RTU-PPO",
+    "PPO-RTU_LN_RT_128_1": "RTU-PPO Simple Memory",
     "PPO-RTU_L2": "RTU-PPO (L2)",
     "PPO-RTU_LN_128": "RTU-PPO (LN)",
     "PPO-RTU_LN_128_512": "RTU-PPO (LN, H512)",
@@ -85,6 +141,7 @@ LABEL_MAP: Dict[str, str] = {
     "DQN_Reset_Head": "DQN (Head Reset)",
     "DQN_Hare_and_Tortoise": "DQN (Hare & Tortoise)",
     "DQN_Shrink_and_Perturb": "DQN (S&P)",
+    "DQN_ReDo_PostLNScore": "DQN (ReDo)",
     "DQN_privileged": "DQN (Privileged)",
     "DQN_world": "DQN (World)",
     "DQN_LN_RT": "DQN (LN, RT)",
@@ -93,8 +150,8 @@ LABEL_MAP: Dict[str, str] = {
     "DRQN_1_1": "DRQN (1-1)",
     "DRQN_LN_0_2": "DRQN (LN, 0-2)",
     "DRQN_0_2": "DRQN (0-2)",
-    "DRQN": "DRQN",
     "PT_DQN": "PT DQN",
+    "PT_DQN_64": "PT DQN",
     "Search-Brown": "Search (Brown)",
     "Search-Brown-Avoid-Green": "Search (+B-G)",
     "Search-Morel": "Search (Morel)",
@@ -126,8 +183,10 @@ YLABEL_MAP: Dict[str, str] = {
 
 
 # Color scheme for plotting
-colorset = tc.tol_cset("high_contrast")
-sunset_colormap = tc.tol_cmap("sunset")
+# `Any`: tol_colors' tol_cset/tol_cmap return types don't expose the named color
+# attributes / call signature to the type checker.
+colorset: Any = tc.tol_cset("high_contrast")
+sunset_colormap: Any = tc.tol_cmap("sunset")
 
 # Biome colors for plotting
 TWO_BIOME_COLORS: Dict[str, Any] = {
@@ -140,6 +199,14 @@ WEATHER_BIOME_COLORS: Dict[str, Any] = {
     "Cold": sunset_colormap(0.0),
     "Neither": sunset_colormap(0.5),
     "Hot": sunset_colormap(1.0),
+}
+
+BIG_BIOME_COLORS: Dict[str, Any] = {
+    "Biome 0": tc.colorsets["vibrant"].blue,
+    "Biome 1": tc.colorsets["vibrant"].orange,
+    "Biome 2": tc.colorsets["vibrant"].teal,
+    "Biome 3": tc.colorsets["vibrant"].magenta,
+    "Other": tc.colorsets["muted"].pale_grey,
 }
 
 # Algorithm color mapping (vibrant palette)
@@ -170,7 +237,7 @@ COLOR_MAP: Dict[str, Any] = {
     # Mapped label keys
     "RTU-PPO (CA)": _muted.rose,
     "DQN (CA)": _muted.olive,
-    "PPO (Simple Memory)": _vibrant.cyan,
+    "PPO Simple Memory": _vibrant.cyan,
     "RTU-PPO": _vibrant.magenta,
     "RTU-PPO (Frozen @ 5 M)": _vibrant.magenta,
     "Search": _vibrant.orange,
@@ -178,9 +245,7 @@ COLOR_MAP: Dict[str, Any] = {
     "PPO (CA)": _muted.purple,
     "PPO": _muted.indigo,
     "PPO (Frozen @ 5 M)": _muted.indigo,
-    "DQN": _muted.green,
     "DQN (Frozen @ 5 M)": _muted.green,
-    "DRQN": "black",
     "DRQN (Frozen @ 5 M)": "black",
     "DQN (RT)": _vibrant.teal,
     "DQN (RT) (Frozen @ 5 M)": _vibrant.teal,
@@ -197,6 +262,18 @@ def get_biome_mapping(env: str) -> Dict[int, str]:
         return {-1: "Neither", 0: "Morel", 1: "Oyster"}
     if "Weather" in env:
         return {-1: "Neither", 0: "Hot", 1: "Cold"}
+    if "ForagaxBig" in env:
+        return {
+            0: "Biome 0",
+            1: "Biome 1",
+            2: "Biome 2",
+            3: "Biome 3",
+            4: "Other",
+            5: "Other",
+            6: "Other",
+            7: "Other",
+            8: "Other",
+        }
     raise ValueError(f"Unknown biome mapping for environment: {env}")
 
 
@@ -264,6 +341,33 @@ def load_data(experiment_path: Path) -> pl.DataFrame:
 # ---------------------
 # Data Filtering
 # ---------------------
+def _alg_requests_reward_trace(alg: str) -> bool:
+    alg = alg.lower()
+    return bool(re.search(r"(^|[_-])rt($|[_-])", alg)) or (
+        "reward_trace" in alg or "reward-trace" in alg
+    )
+
+
+def _reward_trace_filter_expr(df: pl.DataFrame, alg: str):
+    trace_col = "representation.use_reward_trace"
+    if trace_col not in df.columns:
+        return None
+
+    alg_df = df.filter(pl.col("alg") == alg)
+    if alg_df.is_empty():
+        return None
+
+    trace_enabled = pl.col(trace_col).fill_null(False).cast(pl.Boolean)
+    has_trace = alg_df.select(trace_enabled.any()).item()
+    has_no_trace = alg_df.select((~trace_enabled).any()).item()
+
+    if _alg_requests_reward_trace(alg) and has_trace:
+        return trace_enabled
+    if not _alg_requests_reward_trace(alg) and has_trace and has_no_trace:
+        return ~trace_enabled
+    return None
+
+
 def filter_by_alg_aperture(
     df: pl.DataFrame, filter_strings: Optional[List[str]]
 ) -> pl.DataFrame:
@@ -279,6 +383,10 @@ def filter_by_alg_aperture(
         if len(parts) > 1:
             aperture = int(parts[1])
             cond = cond & (pl.col("aperture") == aperture)
+
+        reward_trace_expr = _reward_trace_filter_expr(df, alg)
+        if reward_trace_expr is not None:
+            cond = cond & reward_trace_expr
 
         conditions.append(cond)
 

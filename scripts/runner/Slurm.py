@@ -18,6 +18,7 @@ class SingleNodeOptions(Slurm.SingleNodeOptions):
     gpus: int | str | None = None
     tasks_per_core: int | float = 1
     tasks_per_vmap: int = 1
+    xla_python_client_mem_fraction: float | None = None
 
 
 @dataclass
@@ -25,6 +26,7 @@ class MultiNodeOptions(Slurm.MultiNodeOptions):
     gpus: int | str | None = None
     tasks_per_core: int | float = 1
     tasks_per_vmap: int = 1
+    xla_python_client_mem_fraction: float | None = None
 
 
 _ACCOUNT_PRIORITY = ("rrg-", "aip-", "def-")

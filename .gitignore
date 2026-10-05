@@ -23,9 +23,15 @@ test.json
 # ignore editor settings
 .vscode
 
+# ignore Claude Code session metadata
+.claude/
+
 # ignore build folder
 build
 build/
 **.egg-info/
 
 venv.tar.xz
+
+# macOS Finder metadata
+.DS_Store

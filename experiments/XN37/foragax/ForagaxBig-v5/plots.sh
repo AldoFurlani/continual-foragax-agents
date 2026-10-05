@@ -1,0 +1,1 @@
+python src/learning_curve.py experiments/XN37/foragax/ForagaxBig-v5 --plot-name RTU-2048-crelu-comparison --filter-alg-apertures PPO-RTU_LN_2048_1:9 PPO-RTU_LN_2048-crelu:9 --plot-avg --disable-fov --legend-on-bar --end-frame 10000000 --horizontal-bars --font-size 20

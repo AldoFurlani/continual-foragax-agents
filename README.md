@@ -87,33 +87,33 @@ because that is what the `E136-big` example scripts use.
 
 ```bash
 ssh vulcan
+cd ~/scratch
 git clone git@github.com:steventango/continual-foragax-agents.git
 cd continual-foragax-agents
-./scripts/setup_cc.sh
+
+# One-time: install uv if you don't already have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+
+# Install the project + CUDA-enabled JAX into .venv/
+uv sync --group cuda
 ```
 
-`scripts/setup_cc.sh` does two things:
-
-1. Loads `python/3.11 arrow/19 gcc`, creates `~/.venv` (the **launcher** venv,
-   used by `scripts/slurm.py` itself), and pip-installs `PyExpUtils-andnp` and
-   `ml-instrument` into it.
-2. Submits `scripts/local_node_venv.sh` as a short Slurm job that builds the
-   project `.venv` on a compute node (loads `opencv rust swig`, runs
-   `pip install -e .` in `$SLURM_TMPDIR`, then copies the resulting `.venv`
-   back into the project directory).
+`uv sync --group cuda` resolves `pyproject.toml` + `uv.lock`, prefers
+prebuilt wheels (avoiding the long Rust compile of `polars-runtime-*`
+that breaks login-node memory limits), and includes the optional `cuda`
+dependency group for GPU jobs.
 
 > **Allocation accounts.** `scripts/slurm.py` auto-detects your SLURM
 > account from `sacctmgr` (priority `rrg-` > `aip-` > `def-`, randomized
 > within a tier per job to spread load). Pass `--account=<name>` on the
-> CLI to pin a specific account. `scripts/local_node_venv.sh` and the
-> per-experiment `*_job.sh` files still hardcode `--account=` and need
-> manual edits.
+> CLI to pin a specific account. The per-experiment `*_job.sh` files
+> still hardcode `--account=` and need manual edits.
 
-Wait for the build job to finish, confirm there is a `.venv/` in the project
-root, and you are ready to schedule sweeps. Each new shell needs:
+Confirm `.venv/` is in the project root. Each new shell needs:
 
 ```bash
-source ~/.venv/bin/activate      # the launcher venv
+source .venv/bin/activate
 sq                               # check job status
 ```
 
@@ -130,8 +130,8 @@ to `scripts/slurm.py`, one per algorithm:
 
 ```bash
 python scripts/slurm.py \
-    --cluster clusters/vulcan-gpu-vmap-24.json \
-    --time 03:00:00 --runs 10 --force \
+    --cluster clusters/vulcan-gpu-vmap-32G.json \
+    --tasks 24 --time 03:00:00 --runs 10 --force \
     --entry src/rtu_ppo.py \
     -e experiments/E136-big/foragax-sweep/ForagaxBig-v5/9/PPO-RTU_LN_128_HT.json
 ```
@@ -143,11 +143,12 @@ as per k%-tuning [1] (10% of the 10M-step evaluation budget);
 `experiment.seed_offset: 1_000_000` keeps sweep seeds disjoint from
 evaluation seeds.
 
-**Cluster JSONs** in `clusters/` choose the resource shape:
-- `vulcan-gpu-vmap-24.json` — vmap'd PPO across multiple seeds on one GPU.
-- `vulcan-cpu-32G.json` — DQN on CPU.
-- `vulcan-gpu-mps.json` — DRQN with NVIDIA MPS for GPU sharing.
-- `fir-*.json` — equivalents for Fir.
+**Cluster JSONs** in `clusters/` choose the resource shape — names encode
+the hardware (memory, GPU type); task count and time are passed at the
+call site via `--tasks N` and `--time HH:MM:SS`:
+- `vulcan-gpu-vmap-32G.json` / `-vmap.json` (64G) / `-vmap-128G.json` —
+  vmap'd PPO across multiple seeds on one GPU; pick the memory tier you need.
+- `vulcan-gpu.4-vmap.json` — quarter L40S (softMIG)
 
 Run with:
 
@@ -273,8 +274,6 @@ clusters/                   # Slurm resource templates (vulcan / cedar / fir)
 scripts/
     slurm.py                # cluster job submission
     local.py                # local multi-seed driver
-    setup_cc.sh             # one-time CC bootstrap
-    local_node_venv.sh      # builds project .venv on a compute node
     generate_frozen_configs.py
     ...                     # other one-off helpers
 ```
@@ -333,7 +332,9 @@ The load-bearing libraries (full list in `pyproject.toml`):
 **What's a good size for cluster jobs?**
 Aim for jobs that run between 1 and 12 hours; ~3 hours is the sweet spot on
 the Compute Canada queue. The vmap-based JSONs in `clusters/` (e.g.
-`vulcan-gpu-vmap-24.json`) bundle many seeds into one job and are highly efficient. To estimate task count for a config:
+`vulcan-gpu-vmap-32G.json`) bundle many seeds into one job and are highly
+efficient — pass `--tasks N` to set how many seeds get packed per vmap. To
+estimate task count for a config:
 
 ```python
 import experiment.ExperimentModel as Experiment

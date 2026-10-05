@@ -11,6 +11,7 @@ from algorithms.BaseAgent import BaseAgent
 @cxu.dataclass
 class AgentState:
     key: jax.Array
+    steps: int = 0
 
 
 class RandomAgent(BaseAgent):

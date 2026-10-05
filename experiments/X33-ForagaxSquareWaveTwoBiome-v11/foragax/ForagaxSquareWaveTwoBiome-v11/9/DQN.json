@@ -1,7 +1,7 @@
 {
     "agent": "DQN",
     "problem": "Foragax",
-    "total_steps": 10000000,
+    "total_steps": 2000000,
     "episode_cutoff": -1,
     "metaParameters": {
         "epsilon": 0.1,
@@ -15,7 +15,9 @@
             "observation_type": "color"
         },
         "experiment": {
-            "seed_offset": 0
+            "seed_offset": 0,
+            "ntk_freq": 100000, 
+            "x_ref_steps": 10000 
         },
         "gamma": 0.99,
         "optimizer": {

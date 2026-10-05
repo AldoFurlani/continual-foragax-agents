@@ -4,6 +4,7 @@ import numpy as np
 import polars as pl
 
 from plotting_utils import (
+    BIG_BIOME_COLORS,
     FONTSIZE,
     LABEL_MAP,
     TWO_BIOME_COLORS,
@@ -29,6 +30,76 @@ SAMPLE_TYPE_MAP = {
 }
 
 
+def get_biome_plot_components(env, available_biomes, columns, window):
+    biome_mapping = get_biome_mapping(env)
+    available_biomes = sorted(available_biomes)
+
+    if "TwoBiome" in env:
+        biome_colors = TWO_BIOME_COLORS
+        components = [
+            (biome_mapping[b], [b]) for b in [0, -1, 1] if b in available_biomes
+        ]
+        sort_names = ["Morel", "Oyster"]
+    elif "Weather" in env:
+        biome_colors = WEATHER_BIOME_COLORS
+        components = [
+            (biome_mapping[b], [b]) for b in [0, -1, 1] if b in available_biomes
+        ]
+        sort_names = ["Hot", "Cold"]
+    elif "ForagaxBig" in env:
+        biome_colors = BIG_BIOME_COLORS
+        primary_biomes = [0, 1, 2, 3]
+        components = [
+            (biome_mapping[b], [b]) for b in primary_biomes if b in available_biomes
+        ]
+        other_biomes = [b for b in available_biomes if b not in primary_biomes]
+        if other_biomes:
+            components.append(("Other", other_biomes))
+        sort_names = [
+            biome_mapping[b] for b in primary_biomes if b in available_biomes
+        ]
+    else:
+        raise ValueError(f"Unknown biome mapping for environment: {env}")
+
+    plot_components = []
+    for idx, (name, biome_ids) in enumerate(components):
+        metric_cols = [
+            f"biome_{b}_occupancy_{window}"
+            for b in biome_ids
+            if f"biome_{b}_occupancy_{window}" in columns
+        ]
+        if metric_cols:
+            plot_components.append(
+                {
+                    "name": name,
+                    "metric": f"biome_component_{idx}",
+                    "cols": metric_cols,
+                    "sort_priority": name in sort_names,
+                }
+            )
+
+    if not plot_components:
+        raise ValueError(
+            f"No biome occupancy columns found for environment {env} and window {window}"
+        )
+
+    return biome_colors, plot_components
+
+
+def biome_component_mean_expr(component):
+    cols = [pl.col(col) for col in component["cols"]]
+    if len(cols) == 1:
+        expr = cols[0].mean()
+    else:
+        expr = pl.sum_horizontal(cols).mean()
+    return expr.fill_null(0.0).alias(component["metric"])
+
+
+def occupancy_value(seed_data, seed, metric):
+    value = seed_data[seed].get(metric) if metric is not None else None
+    return 0.0 if value is None else value
+
+
 def main():
     parser = PlottingArgumentParser(description="Plot biome occupancy as stacked bars.")
     parser.add_argument("--sample-types", nargs="*", help="Sample types to plot.")
@@ -52,36 +123,26 @@ def main():
 
     if args.sample_types:
         df = df.filter(pl.col("sample_type").is_in(args.sample_types))
+        sample_types_list = args.sample_types
+    else:
+        if "every" in df["sample_type"].unique().to_list():
+            df = df.filter(pl.col("sample_type") == "every")
+        df = df.with_columns(pl.lit("All").alias("sample_type"))
+        sample_types_list = ["All"]
 
     if args.filter_seeds:
         df = df.filter(pl.col("seed").is_in(args.filter_seeds))
 
     env = df["env"][0]
 
-    # Determine biome mappings
-    biome_mapping = get_biome_mapping(env)
-    if "TwoBiome" in env:
-        biome_colors = TWO_BIOME_COLORS
-        biome_order = ["Morel", "Neither", "Oyster"]
-    elif "Weather" in env:
-        biome_colors = WEATHER_BIOME_COLORS
-        biome_order = ["Hot", "Neither", "Cold"]
-    else:
-        raise ValueError(f"Unknown biome mapping for environment: {env}")
-
     available_biomes = sorted(df["biome_id"].unique())
-    biome_metrics = [f"biome_{b}_occupancy_{args.window}" for b in available_biomes]
-    biome_names = [biome_mapping[b] for b in available_biomes]
-
-    # Reorder based on predefined order
-    ordered_indices = [
-        biome_names.index(name) for name in biome_order if name in biome_names
-    ]
-    biome_metrics = [biome_metrics[i] for i in ordered_indices]
-    biome_names = [biome_names[i] for i in ordered_indices]
+    biome_colors, plot_components = get_biome_plot_components(
+        env, available_biomes, df.columns, args.window
+    )
+    biome_metrics = [component["metric"] for component in plot_components]
+    biome_names = [component["name"] for component in plot_components]
 
     main_alg_apertures = sorted(df.select(["alg", "aperture"]).unique().rows())
-    sample_types_list = args.sample_types or df["sample_type"].unique().to_list()
 
     # Create figure
     nrows = len(main_alg_apertures)
@@ -92,7 +153,7 @@ def main():
 
     # Aggregate data
     agg_data = df.group_by(["alg", "aperture", "sample_type", "seed"]).agg(
-        [pl.mean(metric).alias(metric) for metric in biome_metrics]
+        [biome_component_mean_expr(component) for component in plot_components]
     )
 
     # Plotting
@@ -125,25 +186,45 @@ def main():
                     seed_data[seed] = {metric: row[metric] for metric in biome_metrics}
 
                 # Sort seeds based on biome occupancy
+                metric_by_name = {
+                    component["name"]: component["metric"]
+                    for component in plot_components
+                }
                 if "TwoBiome" in env:
-                    morel_metric = f"biome_0_occupancy_{args.window}"
-                    oyster_metric = f"biome_1_occupancy_{args.window}"
+                    morel_metric = metric_by_name.get("Morel")
+                    oyster_metric = metric_by_name.get("Oyster")
                     sorted_seeds = sorted(
                         seed_data.keys(),
                         key=lambda s: (
-                            -seed_data[s].get(morel_metric, 0.0),  # descending morel
-                            seed_data[s].get(oyster_metric, 0.0),  # ascending oyster
+                            -occupancy_value(seed_data, s, morel_metric),
+                            occupancy_value(seed_data, s, oyster_metric),
+                            str(s),
                         ),
                     )
                 elif "Weather" in env:
-                    hot_metric = f"biome_0_occupancy_{args.window}"
-                    cold_metric = f"biome_1_occupancy_{args.window}"
+                    hot_metric = metric_by_name.get("Hot")
+                    cold_metric = metric_by_name.get("Cold")
                     sorted_seeds = sorted(
                         seed_data.keys(),
                         key=lambda s: (
-                            -seed_data[s].get(hot_metric, 0.0),  # descending hot
-                            seed_data[s].get(cold_metric, 0.0),  # ascending cold
+                            -occupancy_value(seed_data, s, hot_metric),
+                            occupancy_value(seed_data, s, cold_metric),
+                            str(s),
                         ),
+                    )
+                elif "ForagaxBig" in env:
+                    primary_metrics = [
+                        component["metric"]
+                        for component in plot_components
+                        if component["sort_priority"]
+                    ]
+                    sorted_seeds = sorted(
+                        seed_data.keys(),
+                        key=lambda s: tuple(
+                            -occupancy_value(seed_data, s, metric)
+                            for metric in primary_metrics
+                        )
+                        + (str(s),),
                     )
                 else:
                     sorted_seeds = plot_df["seed"].to_list()
@@ -161,7 +242,7 @@ def main():
             y_positions = np.arange(len(plot_df))
 
             for metric, name in zip(biome_metrics, biome_names, strict=True):
-                values = plot_df[metric].to_numpy()
+                values = np.nan_to_num(plot_df[metric].to_numpy(), nan=0.0)
                 color = biome_colors[name]
                 ax.barh(
                     y_positions,

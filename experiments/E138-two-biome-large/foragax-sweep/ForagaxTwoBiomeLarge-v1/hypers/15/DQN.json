@@ -1,0 +1,22 @@
+{
+    "batch": 32,
+    "buffer_min_size": 50,
+    "buffer_size": 10000,
+    "environment.aperture_size": 15,
+    "environment.env_id": "ForagaxTwoBiomeLarge-v1",
+    "epsilon_linear_decay": 0.000119,
+    "experiment.seed_offset": 1000000,
+    "final_epsilon": 0.05,
+    "initial_epsilon": 1.0,
+    "n_step": 1,
+    "optimizer.alpha": 0.001,
+    "optimizer.beta1": 0.9,
+    "optimizer.beta2": 0.9,
+    "optimizer.eps": 0.01,
+    "optimizer.name": "Adam",
+    "representation.hidden": 64,
+    "representation.layers": 1,
+    "representation.type": "ForagerNet",
+    "target_refresh": 1,
+    "update_freq": 1
+}

@@ -45,16 +45,10 @@ class DQN_Reset(DQN):
             hypers=hypers,
         )
 
-    @partial(jax.jit, static_argnums=0)
-    def _maybe_update(self, state: AgentState) -> AgentState:
-        state = super()._maybe_update(state)
-        state = jax.lax.cond(
-            state.steps % state.hypers.reset_steps == 0,
-            self._reset,
-            lambda s: s,
-            state,
-        )
-        return state
+        self.periodic_freq = int(params["reset_steps"])
+
+    def _periodic_step(self, state: AgentState) -> AgentState:
+        return self._reset(state)
 
     @partial(jax.jit, static_argnums=0)
     def _reset(self, state: AgentState):

@@ -8,7 +8,7 @@
     "epsilon": 0.25,
     "experiment.seed_offset": 1000000,
     "gamma": 0.99,
-    "optimizer.alpha": 0.001,
+    "optimizer.alpha": 0.003,
     "optimizer.beta1": 0.9,
     "optimizer.beta2": 0.999,
     "optimizer.eps": 1e-05,

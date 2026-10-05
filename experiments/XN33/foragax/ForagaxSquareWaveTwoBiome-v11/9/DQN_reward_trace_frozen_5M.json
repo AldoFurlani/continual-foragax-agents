@@ -1,0 +1,44 @@
+{
+    "agent": "DQN_reward_trace_frozen_5M",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "epsilon": 0.1,
+        "target_refresh": 128,
+        "buffer_size": 1000,
+        "buffer_min_size": 50,
+        "batch": 32,
+        "environment": {
+            "env_id": "ForagaxSquareWaveTwoBiome-v11",
+            "aperture_size": 9,
+            "observation_type": "color"
+        },
+        "experiment": {
+            "seed_offset": 0
+        },
+        "gamma": 0.99,
+        "use_reward_trace": true,
+        "reward_trace_decay": 0.9,
+        "optimizer": {
+            "name": "Adam",
+            "alpha": 0.001,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-05
+        },
+        "representation": {
+            "type": "ForagerNet",
+            "hidden": 64,
+            "d_hidden": 512,
+            "pre_core_layers": 1,
+            "core_layers": 1,
+            "post_core_layers": 1,
+            "conv": "None",
+            "use_layernorm": true,
+            "scalar_features": "hint,last_action,last_reward,reward_trace"
+        },
+        "update_freq": 4,
+        "freeze_steps": 5000000
+    }
+}

@@ -3,8 +3,10 @@
 #SBATCH --job-name=E120-two-biome_foragax-sweep_ForagaxTwoBiome-v17_process_data
 #SBATCH --mem-per-cpu=128G
 #SBATCH --ntasks=1
-#SBATCH --output=../slurm-%j.out
+#SBATCH --output=/scratch/%u/logs/slurm-%j.out
 #SBATCH --time=00:15:00
+
+set -e
 
 module load arrow/19
 
@@ -12,6 +14,7 @@ cp -R .venv $SLURM_TMPDIR
 
 export MPLBACKEND=TKAgg
 export OMP_NUM_THREADS=1
+export POLARS_MAX_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NPROC=1

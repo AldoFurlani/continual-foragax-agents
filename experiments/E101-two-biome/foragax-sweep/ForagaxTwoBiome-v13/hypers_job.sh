@@ -3,8 +3,10 @@
 #SBATCH --job-name=E96_hypers-search-limited-fov_foragax-sweep_ForagaxTwoBiome-v13
 #SBATCH --mem-per-cpu=8G
 #SBATCH --ntasks=1
-#SBATCH --output=../slurm-%j.out
+#SBATCH --output=/scratch/%u/logs/slurm-%j.out
 #SBATCH --time=00:15:00
+
+set -e
 
 module load arrow/19
 

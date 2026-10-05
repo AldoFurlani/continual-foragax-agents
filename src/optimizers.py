@@ -227,3 +227,100 @@ def selective_weight_reinitialization(
         return new_updates, new_state
 
     return optax.GradientTransformationExtraArgs(init_fn, update_fn)  # type: ignore
+
+
+class UPGDState(NamedTuple): 
+    """State for Utility based Perturbed Gradient Descent optimizer."""
+    step: chex.Array                   # time-step t 
+    avg_utility: optax.Params          # U_l: the running average of utility (U_l) is the utility of each connection per layer
+    rng_key: chex.PRNGKey              # RNG for gaussian perturbation
+
+
+def upgd_optimizer(
+    step_size: float,              # alpha 
+    utility_decay_rate: float,     # beta 
+    noise: float,                  # sigma (stddev)            
+    seed: int = 0,
+
+)-> optax.GradientTransformation:
+    """Optax GradientTransformation for Utility based Perturbed Gradient Descent.
+
+    F_l is the raw gradient
+    S_l is the hessian approximation using HesScale 
+    """
+    
+    def init_fn(params: optax.Params) -> UPGDState:
+        """
+        Returns: initial state object
+        """
+        return UPGDState(
+            step=jnp.array(0, dtype=jnp.int32),
+            avg_utility=jax.tree.map(jnp.zeros_like, params),    # generates U_l=0 for each weight in the network (dictated by params)
+            rng_key=jax.random.PRNGKey(seed)
+        )
+    
+    def update_fn(
+            updates: optax.Updates,
+            state: UPGDState, 
+            params: Optional[optax.Params] = None,       # the current weights W_l
+            *, 
+            grad: Optional[optax.Updates] = None,        # F_l: first order gradient 
+            hess_diag: Optional[optax.Updates] = None,   # S_l: hessian approx (HesScale)
+    ) -> tuple[optax.Updates, UPGDState]:
+        """Calculates the update for UPGD
+        
+        Note: the weights W (params), the gradient (grad) and the hessian approximation 
+        (hess_diag) all have the same size. 
+        """
+        t = state.step + 1 
+
+        # raw utility M_l 
+        M = jax.tree.map( 
+            lambda S, F, W: 0.5 * S * W**2 - F * W, 
+            hess_diag, grad, params
+        )
+        
+        # running average U_l 
+        new_avg_utility = jax.tree.map( 
+            lambda u, m: utility_decay_rate * u + (1.0 - utility_decay_rate) * m,
+            state.avg_utility, M
+        )
+
+        # bias correction U_hat_l 
+        u_hat = jax.tree.map( 
+            lambda u: u / (1.0 - utility_decay_rate**t), 
+            new_avg_utility
+        )
+
+        # global scaling / normalizing of utility over layer l (eta) 
+        eta = jax.tree_util.tree_reduce(
+            lambda acc, x: jnp.maximum(acc, jnp.max(x)), 
+            u_hat, jnp.array(-jnp.inf) 
+        )
+
+        # scaled utility U_bar = phi(U_hat_l / eta) in [0, 1]
+        u_bar = jax.tree.map( 
+            lambda x: jax.nn.sigmoid(x / eta), 
+            u_hat
+        )
+        
+        # gaussian perturbation     
+        leaves, treedef = jax.tree_util.tree_flatten(params) 
+        key, *leaf_keys = jax.random.split(state.rng_key, len(leaves) + 1)
+        xi = jax.tree_util.tree_unflatten(
+            treedef, 
+            [noise * jax.random.normal(k, p.shape) 
+             for k, p in zip(leaf_keys, leaves)]
+        )
+
+        # weight update
+        new_updates = jax.tree.map( 
+            lambda F, x, u_b: -step_size * (F + x) * (1.0 - u_b), 
+            grad, xi, u_bar
+        )
+
+        return new_updates, UPGDState(
+            step=t, avg_utility=new_avg_utility, rng_key=key
+        )
+    
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)  # type: ignore
