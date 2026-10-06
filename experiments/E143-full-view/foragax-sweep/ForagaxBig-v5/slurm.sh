@@ -24,22 +24,20 @@
 # hint), so view size is the only difference (E136's PPO-RTU_LN_HINT_128
 # for the RTU pair).
 #
-# --tasks 128 is half of E136's 256: the 28x28 input makes each conv pass ~10x
-# larger. Estimated, not measured; scripts/slurm.py is idempotent, so re-run to
-# fill seeds lost to OOM or timeout.
+# Measured on the first launch: 90 runs/job did not finish in 3h (and a run
+# that times out saves nothing), while RTU at ~23 runs/job took 1h42 and T-BPTT
+# at ~20 runs/job took 42min. Feedforward is packed like T-BPTT. scripts/slurm.py
+# is idempotent, so re-run to fill seeds lost to OOM or timeout.
 for alg in PPO_LN_HINT_128 PPO_LN_NOHINT_128; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 128 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e experiments/E143-full-view/foragax-sweep/ForagaxBig-v5/world/${alg}.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 20 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e experiments/E143-full-view/foragax-sweep/ForagaxBig-v5/world/${alg}.json
 done
 
-# RTU-PPO packs fewer runs per job (E136's 9x9 sweep used 24 / 3h); the extra
-# hours are for the 28x28 conv. The RTU sits after the 64-unit dense layer, so
-# its real-time update costs the same as at 9x9. Estimated, not measured.
+# RTU-PPO: 24 runs/job, measured ~1h42 per job.
 for alg in PPO-RTU_LN_HINT_128 PPO-RTU_LN_NOHINT_128; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 24 --time 06:00:00 --runs 10 --force --entry src/rtu_ppo.py -e experiments/E143-full-view/foragax-sweep/ForagaxBig-v5/world/${alg}.json
 done
 
-# T-BPTT packs 20 runs per job as in E142 (9x9: 20 / 3h); doubled hours for the
-# 28x28 conv. Estimated, not measured.
+# T-BPTT: 20 runs/job, measured ~42min per job.
 for alg in BPTTActorCriticConv_T2_HINT BPTTActorCriticConv_T2_NOHINT; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 20 --time 06:00:00 --runs 10 --force --entry src/rtu_ppo.py -e experiments/E143-full-view/foragax-sweep/ForagaxBig-v5/world/${alg}.json
 done
