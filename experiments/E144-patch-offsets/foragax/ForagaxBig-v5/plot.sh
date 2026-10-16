@@ -1,7 +1,8 @@
 #!/bin/bash
 # Figures for E144: each agent on ForagaxBig-v5 with its 9x9 rgb view and the
-# constant hint, with and without the agent-relative offsets to the four food
-# patches. The gap within a pair is what localisation costs that agent.
+# constant hint -- vanilla, + offsets to all four food patches, + offset to the
+# hinted patch only. vanilla -> offsets is what localisation costs the agent;
+# offsets -> target is what picking out the hinted patch's offset costs it.
 #
 # Assumes process_data_job.sh has produced
 #   results/E144-patch-offsets/foragax/ForagaxBig-v5/data.parquet
@@ -42,13 +43,13 @@ for (alg, aperture), sub in combined.group_by(["alg", "aperture"]):
     print(f"  {alg}:{aperture}: {sub['seed'].n_unique()} seeds, last frame {sub['frame'].max()}")
 PYEOF
 
-# Pairs adjacent so each agent's vanilla and offset bars sit together.
+# Each agent's three variants adjacent, so their bars sit together.
 SERIES="Search-Oracle \
-    PPO_LN_HINT_128:9 PPO_LN_HINT_OFFSET_128:9 \
-    PPO-RTU_LN_HINT_128:9 PPO-RTU_LN_HINT_OFFSET_128:9 \
-    BPTTActorCriticConv_T2_HINT:9 BPTTActorCriticConv_T2_HINT_OFFSET:9 \
-    DQN_LN_HINT:9 DQN_LN_HINT_OFFSET:9 \
-    DRQN_LN_HINT:9 DRQN_LN_HINT_OFFSET:9"
+    PPO_LN_HINT_128:9 PPO_LN_HINT_OFFSET_128:9 PPO_LN_HINT_TARGET_128:9 \
+    PPO-RTU_LN_HINT_128:9 PPO-RTU_LN_HINT_OFFSET_128:9 PPO-RTU_LN_HINT_TARGET_128:9 \
+    BPTTActorCriticConv_T2_HINT:9 BPTTActorCriticConv_T2_HINT_OFFSET:9 BPTTActorCriticConv_T2_HINT_TARGET:9 \
+    DQN_LN_HINT:9 DQN_LN_HINT_OFFSET:9 DQN_LN_HINT_TARGET:9 \
+    DRQN_LN_HINT:9 DRQN_LN_HINT_OFFSET:9 DRQN_LN_HINT_TARGET:9"
 
 plot() {  # plot <plot-name> <metric>
     $PY src/learning_curve.py "$CMP" \

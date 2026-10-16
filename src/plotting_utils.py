@@ -66,8 +66,10 @@ LABEL_MAP: Dict[str, str] = {
     # E143 full-view runs: "(CA)" is the constant hint, as in E136; the
     # no-hint controls are labelled explicitly.
     "PPO_LN_NOHINT_128": "PPO (No Hint)",
-    # E144: "+ Offsets" is the agent-relative offset to each food patch.
+    # E144: "+ Offsets" is the agent-relative offset to each food patch;
+    # "+ Target" is the offset to the hinted patch only.
     "PPO_LN_HINT_OFFSET_128": "PPO (CA + Offsets)",
+    "PPO_LN_HINT_TARGET_128": "PPO (CA + Target)",
     "PPO_L2": "PPO (L2)",
     "ActorCriticMLP": "PPO",
     "ActorCriticMLPReLU": "PPO (ReLU)",
@@ -108,6 +110,7 @@ LABEL_MAP: Dict[str, str] = {
     "BPTTActorCriticConv_T2_HINT": "T-BPTT Conv (T=2, CA)",
     "BPTTActorCriticConv_T2_NOHINT": "T-BPTT Conv (T=2, No Hint)",
     "BPTTActorCriticConv_T2_HINT_OFFSET": "T-BPTT Conv (T=2, CA + Offsets)",
+    "BPTTActorCriticConv_T2_HINT_TARGET": "T-BPTT Conv (T=2, CA + Target)",
     # Stacked LRU-style backbone under T-BPTT: same window sweep, but the
     # gradient now also crosses the two RTU blocks through time.
     "BPTTActorCriticConvStacked_T1": "T-BPTT Conv-Stacked (T=1)",
@@ -142,6 +145,7 @@ LABEL_MAP: Dict[str, str] = {
     "PPO-RTU_LN_HINT_128": "RTU-PPO (CA)",
     "PPO-RTU_LN_NOHINT_128": "RTU-PPO (No Hint)",
     "PPO-RTU_LN_HINT_OFFSET_128": "RTU-PPO (CA + Offsets)",
+    "PPO-RTU_LN_HINT_TARGET_128": "RTU-PPO (CA + Target)",
     "RealTimeActorCriticMLP-world": "RTU-PPO (World)",
     "DQN": "DQN",
     "DQN_CReLU": "DQN (CReLU)",
@@ -150,8 +154,10 @@ LABEL_MAP: Dict[str, str] = {
     "DQN_LN": "DQN (LN)",
     "DQN_LN_HINT": "DQN (CA)",
     "DQN_LN_HINT_OFFSET": "DQN (CA + Offsets)",
+    "DQN_LN_HINT_TARGET": "DQN (CA + Target)",
     "DRQN_LN_HINT": "DRQN (CA)",
     "DRQN_LN_HINT_OFFSET": "DRQN (CA + Offsets)",
+    "DRQN_LN_HINT_TARGET": "DRQN (CA + Target)",
     "DQN_reward_trace": "DQN Simple Memory",
     "DQN_Reset_Head": "DQN (Head Reset)",
     "DQN_Hare_and_Tortoise": "DQN (Hare & Tortoise)",

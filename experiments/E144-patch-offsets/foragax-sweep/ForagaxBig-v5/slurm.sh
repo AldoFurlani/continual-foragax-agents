@@ -16,27 +16,27 @@
 # Sweep grids are the source experiments' own: E136 for PPO, RTU-PPO, DQN and
 # DRQN (DRQN_LN_1_1: sequence_length 64, burn-in 16, kept fixed -- sweeping it
 # let XN34's selection tune DRQN's memory away to 1),
-# E142 for T-BPTT (T=2, num_mini_batch 8). Within a pair only patch_offsets
-# differs. Run sizes are what those experiments used at 9x9.
+# E142 for T-BPTT (T=2, num_mini_batch 8). Across an agent's three configs only
+# the offset flag differs. Run sizes are what those experiments used at 9x9.
 #
 # scripts/slurm.py is idempotent: re-run to fill seeds lost to OOM or timeout.
 SWEEP=experiments/E144-patch-offsets/foragax-sweep/ForagaxBig-v5/9
 
-for alg in PPO_LN_HINT_128 PPO_LN_HINT_OFFSET_128; do
+for alg in PPO_LN_HINT_128 PPO_LN_HINT_OFFSET_128 PPO_LN_HINT_TARGET_128; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 256 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/${alg}.json
 done
 
-for alg in PPO-RTU_LN_HINT_128 PPO-RTU_LN_HINT_OFFSET_128; do
+for alg in PPO-RTU_LN_HINT_128 PPO-RTU_LN_HINT_OFFSET_128 PPO-RTU_LN_HINT_TARGET_128; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 24 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/${alg}.json
 done
 
-for alg in BPTTActorCriticConv_T2_HINT BPTTActorCriticConv_T2_HINT_OFFSET; do
+for alg in BPTTActorCriticConv_T2_HINT BPTTActorCriticConv_T2_HINT_OFFSET BPTTActorCriticConv_T2_HINT_TARGET; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 20 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/${alg}.json
 done
 
 # DQN runs through continuing_main.py; it reads the hint (and so the offsets)
 # through representation.scalar_features.
-for alg in DQN_LN_HINT DQN_LN_HINT_OFFSET; do
+for alg in DQN_LN_HINT DQN_LN_HINT_OFFSET DQN_LN_HINT_TARGET; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 256 --time 03:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/${alg}.json
 done
 
@@ -44,6 +44,6 @@ done
 # Packed one run per core on the MPS node, as in E136, whose DRQN sweep used
 # 9h jobs. save_every 1M checkpoints the full agent state, so a run that hits
 # the time limit resumes when this script is re-run.
-for alg in DRQN_LN_HINT DRQN_LN_HINT_OFFSET; do
+for alg in DRQN_LN_HINT DRQN_LN_HINT_OFFSET DRQN_LN_HINT_TARGET; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 09:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/${alg}.json
 done

@@ -123,3 +123,41 @@ def test_patch_offsets_need_hint():
             return_hint=False,
             patch_offsets=True,
         )
+
+
+def test_target_offset_matches_hinted_patch():
+    target = make(
+        "ForagaxBig-v5", aperture_size=9, observation_type="rgb",
+        hint_duration=100, target_offset=True,
+    )
+    both = _offsets_env()
+    space = target.observation_space(target.default_params)
+    assert isinstance(space, spaces.Dict) and space.spaces["hint"].shape == (4 + 2,)
+    key = jax.random.key(0)
+    _, state = target.reset(key, target.default_params)
+    step = jax.jit(target.step)
+    for _ in range(30):
+        key, act_key, step_key = jax.random.split(key, 3)
+        action = jax.random.randint(act_key, (), 0, 4)
+        obs, state, *_ = step(step_key, state, action, target.default_params)
+        hint = obs["hint"]
+        assert hint.shape == (6,)
+        k = int(jnp.argmax(hint[:4]))
+        offsets = both.get_obs(state, both.default_params)["hint"][4:].reshape(4, 2)
+        assert jnp.allclose(hint[4:], offsets[k])
+
+
+def test_target_offset_zero_at_hinted_centre_and_when_hint_blank():
+    env = make(
+        "ForagaxBig-v5", aperture_size=9, observation_type="rgb",
+        target_offset=True,  # default intermittent hint: blank 90 of 100 steps
+    )
+    _, state = env.reset(jax.random.key(0), env.default_params)
+    centres = [(7, 7), (21, 7), (7, 21), (21, 21)]
+    shown = state.replace(time=jnp.asarray(0, dtype=state.time.dtype))
+    k = int(jnp.argmax(env.get_obs(shown, env.default_params)["hint"][:4]))
+    at_centre = shown.replace(pos=jnp.array(centres[k], dtype=state.pos.dtype))
+    assert jnp.allclose(env.get_obs(at_centre, env.default_params)["hint"][4:], 0.0)
+    blank = state.replace(time=jnp.asarray(50, dtype=state.time.dtype))
+    obs = env.get_obs(blank, env.default_params)["hint"]
+    assert jnp.all(obs[:4] == 0) and jnp.all(obs[4:] == 0)

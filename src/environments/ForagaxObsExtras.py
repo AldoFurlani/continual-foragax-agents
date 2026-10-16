@@ -15,6 +15,12 @@
 #                new key because both rtu_ppo and NNAgent already feed the hint
 #                vector to the network as scalar features.
 #
+# target_offset  Appends just two numbers: the same offset, to the patch the hint
+#                currently names (zeros while the hint is blank). Given the fixed
+#                layout this carries the same information as patch_offsets plus
+#                the hint, but the agent no longer has to pick out the hinted
+#                patch's offset itself -- it is told which way to go.
+#
 # Lives here rather than in continual-foragax so runs do not wait on an
 # upstream release; it overrides get_obs, which both reset and step call.
 from typing import cast
@@ -29,12 +35,14 @@ from gymnax.environments import spaces
 class ExtendedObsForagaxEnv(ForagaxEnv):
     agent_channel: bool
     patch_offsets: bool
+    target_offset: bool
     # Set while rendering, so the video's hint bar shows only the one-hot hint.
     _render_plain_hint: bool = False
 
-    def _setup_extras(self, agent_channel: bool, patch_offsets: bool):
+    def _setup_extras(self, agent_channel: bool, patch_offsets: bool, target_offset: bool):
         self.agent_channel = agent_channel
         self.patch_offsets = patch_offsets
+        self.target_offset = target_offset
         food = np.asarray(self.food_biome_indices)
         starts, stops = self.biome_starts[food], self.biome_stops[food]
         # (num_food_biomes, 2) as (x, y), matching state.pos.
@@ -49,12 +57,20 @@ class ExtendedObsForagaxEnv(ForagaxEnv):
             agent = agent.at[state.pos[1], state.pos[0], 0].set(1.0)
             img = jnp.concatenate([img, agent], axis=-1)
             obs = {**obs, "image": img} if isinstance(obs, dict) else img
-        if self.patch_offsets and not self._render_plain_hint and isinstance(obs, dict):
+        extend = self.patch_offsets or self.target_offset
+        if extend and not self._render_plain_hint and isinstance(obs, dict):
             half = self._world_size / 2.0
             delta = self._patch_centres - state.pos.astype(jnp.float32)
+            # (num_food_biomes, 2), each in [-1, 1).
             offsets = (jnp.mod(delta + half, self._world_size) - half) / half
-            hint = jnp.concatenate([obs["hint"], offsets.reshape(-1)])
-            obs = {**obs, "hint": hint.astype(obs["hint"].dtype)}
+            hint = obs["hint"]
+            parts = [hint]
+            if self.patch_offsets:
+                parts.append(offsets.reshape(-1))
+            if self.target_offset:
+                # The hint is one-hot (or all zeros), so this selects one row.
+                parts.append(hint[: self.num_food_biomes] @ offsets)
+            obs = {**obs, "hint": jnp.concatenate(parts).astype(hint.dtype)}
         return obs
 
     # ForagaxEnv annotates this as Box but returns a Dict when return_hint is on.
@@ -66,8 +82,10 @@ class ExtendedObsForagaxEnv(ForagaxEnv):
         if not isinstance(space, spaces.Dict):
             return image
         out = {**space.spaces, "image": image}
-        if self.patch_offsets:
-            n = space.spaces["hint"].shape[0] + 2 * self.num_food_biomes
+        n = space.spaces["hint"].shape[0]
+        n += 2 * self.num_food_biomes if self.patch_offsets else 0
+        n += 2 if self.target_offset else 0
+        if n != space.spaces["hint"].shape[0]:
             out["hint"] = spaces.Box(-1, 1, (n,))
         return spaces.Dict(out)
 
@@ -80,20 +98,20 @@ class ExtendedObsForagaxEnv(ForagaxEnv):
             self._render_plain_hint = False
 
 
-def make(env_id, agent_channel=False, patch_offsets=False, **kwargs):
+def make(env_id, agent_channel=False, patch_offsets=False, target_offset=False, **kwargs):
     env = foragax_make(env_id, **kwargs)
-    if not (agent_channel or patch_offsets):
+    if not (agent_channel or patch_offsets or target_offset):
         return env
     if agent_channel and (not env.full_world or env.observation_type == "object"):
         raise ValueError(
             "agent_channel needs aperture_size=-1 with an rgb or color view; "
             "apertures are agent-centred and the object view already marks the agent"
         )
-    if patch_offsets and not env.return_hint:
-        raise ValueError("patch_offsets extends the hint vector, so needs return_hint")
+    if (patch_offsets or target_offset) and not env.return_hint:
+        raise ValueError("patch_offsets / target_offset extend the hint vector, so need return_hint")
     # registry.make builds a plain ForagaxEnv with env-specific objects; retype
     # it rather than duplicating that construction.
     env.__class__ = ExtendedObsForagaxEnv
     ext = cast(ExtendedObsForagaxEnv, env)
-    ext._setup_extras(agent_channel, patch_offsets)
+    ext._setup_extras(agent_channel, patch_offsets, target_offset)
     return ext
