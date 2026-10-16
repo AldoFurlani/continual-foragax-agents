@@ -41,9 +41,12 @@ for alg in DQN_LN_HINT DQN_LN_HINT_OFFSET DQN_LN_HINT_TARGET; do
 done
 
 # DRQN (GRU) is the recurrent counterpart of DQN, as RTU-PPO / T-BPTT are of PPO.
-# Packed one run per core on the MPS node, as in E136, whose DRQN sweep used
-# 9h jobs. save_every 1M checkpoints the full agent state, so a run that hits
-# the time limit resumes when this script is re-run.
+# Packed one run per core on the MPS node, as in E136. E136's DRQN sweep used 9h
+# jobs; this allows 24h because save_every 1M only checkpoints the 10M eval
+# runs -- a 1M sweep run never reaches a checkpoint, so one that times out
+# restarts from zero. Do not change save_every mid-sweep instead: it is stored
+# as a hyperparameter, and runs that differ in it would be selected over as
+# separate configurations.
 for alg in DRQN_LN_HINT DRQN_LN_HINT_OFFSET DRQN_LN_HINT_TARGET; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 09:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/${alg}.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 24:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/${alg}.json
 done
