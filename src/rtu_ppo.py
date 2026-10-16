@@ -23,7 +23,6 @@ from jax.tree_util import tree_map
 from jax_tqdm.base import PBar
 from jax_tqdm.scan_pbar import scan_tqdm
 from ml_instrumentation.Collector import Collector
-from ml_instrumentation.metadata import attach_metadata
 from ml_instrumentation.Sampler import Ignore, MovingAverage, Subsample
 from ml_instrumentation.utils import Pipe
 from PyExpUtils.results.tools import getParamsAsDict
@@ -59,10 +58,11 @@ from utils.ppo_metrics import (
     weight_drift,
     weight_norm,
 )
+from utils.metadata import attach_metadata_with_retry
 from utils.preempt import TimeoutHandler
 
 sys.path.insert(0, os.path.abspath("/tmp/src"))
-from environments.ForagaxAgentChannel import make
+from environments.ForagaxObsExtras import make
 
 PERIOD = 182500
 
@@ -2536,7 +2536,7 @@ def main():
 
         meta = getParamsAsDict(exp, idx)
         meta |= {"seed": exp.getRun(idx)}
-        attach_metadata(save_path, idx, meta)
+        attach_metadata_with_retry(save_path, idx, meta)
 
         start_time = time.time()
         collector.merge(context.resolve("results.db"))

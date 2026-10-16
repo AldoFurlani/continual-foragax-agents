@@ -21,7 +21,6 @@ import numpy as np
 from gymnasium.utils.save_video import save_video
 from jax.tree_util import tree_map
 from ml_instrumentation.Collector import Collector
-from ml_instrumentation.metadata import attach_metadata
 from ml_instrumentation.Sampler import Ignore
 from PyExpUtils.results.tools import getParamsAsDict
 from tqdm.auto import tqdm
@@ -31,6 +30,7 @@ from experiment import ExperimentModel
 from problems.registry import getProblem
 from utils.checkpoint import Checkpoint
 from utils.dqn_metrics import DQNMetricsComputer
+from utils.metadata import attach_metadata_with_retry
 from utils.preempt import TimeoutHandler
 from utils.rlglue import RlGlue
 
@@ -265,7 +265,9 @@ def get_agent_metrics(agent_state):
 
 
 def reset_datas():
-    fresh_datas = {"rewards": np.empty((len(indices), n), dtype=np.float16)}
+    fresh_datas: dict[str, np.ndarray] = {
+        "rewards": np.empty((len(indices), n), dtype=np.float16)
+    }
     for k in METRIC_NAMES:
         fresh_datas[k] = np.empty((len(indices), n), dtype=np.float16)
     if ntk_freq > 0:
@@ -362,13 +364,13 @@ for i, idx in enumerate(indices):
                 datas = reset_datas()
 
 if checkpoint_load_failed or (any(loaded_checkpoints) and not all(loaded_checkpoints)):
-    missing = [idx for idx, loaded in zip(indices, loaded_checkpoints) if not loaded]
+    missing = [idx for idx, loaded in zip(indices, loaded_checkpoints, strict=False) if not loaded]
     logger.warning(
         "Not all selected indices had valid checkpoints; starting the whole batch fresh. "
         f"Missing checkpoint indices: {missing}"
     )
     start_step = None
-    for glue, initial_state in zip(glues, initial_glue_states):
+    for glue, initial_state in zip(glues, initial_glue_states, strict=False):
         glue.state = initial_state
     datas = reset_datas()
 
@@ -878,7 +880,7 @@ for i, idx in enumerate(indices):
 
     meta = getParamsAsDict(exp, idx)
     meta |= {"seed": exp.getRun(idx)}
-    attach_metadata(save_path, idx, meta)
+    attach_metadata_with_retry(save_path, idx, meta)
 
     start_time = time.time()
     collector.merge(context.resolve("results.db"))

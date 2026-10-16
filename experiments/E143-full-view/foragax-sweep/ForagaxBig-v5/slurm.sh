@@ -18,7 +18,7 @@
 #                         no 9x9 constant-hint T-BPTT control for the HINT run.
 #
 # Observation is E136's rgb view, widened to the whole map, plus one channel
-# marking the agent's cell (agent_channel, src/environments/ForagaxAgentChannel.py):
+# marking the agent's cell (agent_channel, src/environments/ForagaxObsExtras.py):
 # the full-world rgb view is in fixed coordinates and does not otherwise show
 # where the agent is. The control is E136's PPO_LN_HINT_128 (9x9 rgb, constant
 # hint), so view size is the only difference (E136's PPO-RTU_LN_HINT_128

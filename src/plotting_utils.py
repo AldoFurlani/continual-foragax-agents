@@ -63,6 +63,11 @@ LABEL_MAP: Dict[str, str] = {
     "PPO_LN_RT_128": "PPO Simple Memory",
     "PPO_LN_RT_128_1": "PPO Simple Memory",
     "PPO_LN_HINT_128": "PPO (CA)",
+    # E143 full-view runs: "(CA)" is the constant hint, as in E136; the
+    # no-hint controls are labelled explicitly.
+    "PPO_LN_NOHINT_128": "PPO (No Hint)",
+    # E144: "+ Offsets" is the agent-relative offset to each food patch.
+    "PPO_LN_HINT_OFFSET_128": "PPO (CA + Offsets)",
     "PPO_L2": "PPO (L2)",
     "ActorCriticMLP": "PPO",
     "ActorCriticMLPReLU": "PPO (ReLU)",
@@ -100,6 +105,9 @@ LABEL_MAP: Dict[str, str] = {
     "BPTTActorCriticConv_T4": "T-BPTT Conv (T=4)",
     "BPTTActorCriticConv_T8": "T-BPTT Conv (T=8)",
     "BPTTActorCriticConv_T16": "T-BPTT Conv (T=16)",
+    "BPTTActorCriticConv_T2_HINT": "T-BPTT Conv (T=2, CA)",
+    "BPTTActorCriticConv_T2_NOHINT": "T-BPTT Conv (T=2, No Hint)",
+    "BPTTActorCriticConv_T2_HINT_OFFSET": "T-BPTT Conv (T=2, CA + Offsets)",
     # Stacked LRU-style backbone under T-BPTT: same window sweep, but the
     # gradient now also crosses the two RTU blocks through time.
     "BPTTActorCriticConvStacked_T1": "T-BPTT Conv-Stacked (T=1)",
@@ -131,12 +139,19 @@ LABEL_MAP: Dict[str, str] = {
     "PPO-RTU_L2": "RTU-PPO (L2)",
     "PPO-RTU_LN_128": "RTU-PPO (LN)",
     "PPO-RTU_LN_128_512": "RTU-PPO (LN, H512)",
+    "PPO-RTU_LN_HINT_128": "RTU-PPO (CA)",
+    "PPO-RTU_LN_NOHINT_128": "RTU-PPO (No Hint)",
+    "PPO-RTU_LN_HINT_OFFSET_128": "RTU-PPO (CA + Offsets)",
     "RealTimeActorCriticMLP-world": "RTU-PPO (World)",
     "DQN": "DQN",
     "DQN_CReLU": "DQN (CReLU)",
     "DQN_L2": "DQN (L2)",
     "DQN_L2_Init": "DQN (L2 Init)",
     "DQN_LN": "DQN (LN)",
+    "DQN_LN_HINT": "DQN (CA)",
+    "DQN_LN_HINT_OFFSET": "DQN (CA + Offsets)",
+    "DRQN_LN_HINT": "DRQN (CA)",
+    "DRQN_LN_HINT_OFFSET": "DRQN (CA + Offsets)",
     "DQN_reward_trace": "DQN Simple Memory",
     "DQN_Reset_Head": "DQN (Head Reset)",
     "DQN_Hare_and_Tortoise": "DQN (Hare & Tortoise)",
@@ -179,6 +194,7 @@ YLABEL_MAP: Dict[str, str] = {
     "Ewm Reward": "Average Reward",
     "ewm_reward_5": "Average Reward",
     "ewm_reward_9": "Average Reward",
+    "ewm_biome_rank_5": "Biome Rank",
 }
 
 
