@@ -32,6 +32,7 @@ from utils.checkpoint import Checkpoint
 from utils.dqn_metrics import DQNMetricsComputer
 from utils.metadata import attach_metadata_with_retry
 from utils.preempt import TimeoutHandler
+from utils.prng_pickle import data_to_keys, keys_to_data
 from utils.rlglue import RlGlue
 
 
@@ -348,7 +349,7 @@ for i, idx in enumerate(indices):
                     assert start_step == start_step_idx
 
                 with lzma.open(glue_state_path, "rb") as f:
-                    glues[i].state = pickle.load(f)
+                    glues[i].state = data_to_keys(pickle.load(f))
 
                 with np.load(data_path) as data_idx:
                     for key in data_idx.keys():
@@ -803,7 +804,8 @@ while current_step < n:
 
             # Write temporary files
             with lzma.open(glue_state_path_tmp, "wb") as f:
-                pickle.dump(glue_state_idx, f)
+                # Typed PRNG keys are not picklable on every jax version.
+                pickle.dump(keys_to_data(glue_state_idx), f)
 
             np.savez_compressed(data_path_tmp, **data_to_save)
 
