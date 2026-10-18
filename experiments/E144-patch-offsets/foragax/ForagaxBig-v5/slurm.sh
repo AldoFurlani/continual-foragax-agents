@@ -11,16 +11,24 @@
 # nothing, so if a job times out, raise --time rather than re-running as is.
 EVAL=experiments/E144-patch-offsets/foragax/ForagaxBig-v5/9
 
-for alg in PPO_LN_HINT_128 PPO_LN_HINT_OFFSET_128 PPO_LN_HINT_TARGET_128 PPO-RTU_LN_HINT_128 PPO-RTU_LN_HINT_OFFSET_128 PPO-RTU_LN_HINT_TARGET_128; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 24 --time 06:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/${alg}.json
+# Feedforward PPO (PPO_LN_HINT*) is not run: on the cluster it stays at random
+# play in sweep and eval alike, though the same code learns on a laptop CPU --
+# see scripts/diag/ppo_cluster_diag.sh. Its 10M runs from the first launch
+# exist but are not valid results.
+#
+# RTU-PPO timed out at 6h with 15 runs/job; its runs cannot resume, so 10/job
+# with a 24h limit.
+for alg in PPO-RTU_LN_HINT_128 PPO-RTU_LN_HINT_OFFSET_128 PPO-RTU_LN_HINT_TARGET_128; do
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 10 --time 24:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/${alg}.json
 done
 
 for alg in BPTTActorCriticConv_T2_HINT BPTTActorCriticConv_T2_HINT_OFFSET BPTTActorCriticConv_T2_HINT_TARGET; do
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 20 --time 12:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/${alg}.json
 done
 
+# DQN timed out at E136's 3h limit.
 for alg in DQN_LN_HINT DQN_LN_HINT_OFFSET DQN_LN_HINT_TARGET; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 03:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
 done
 
 # DRQN: 10x the sweep's steps, which took up to 9h per run, so a 10M run may need
