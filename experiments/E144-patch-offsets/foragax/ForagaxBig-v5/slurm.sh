@@ -26,9 +26,13 @@ for alg in BPTTActorCriticConv_T2_HINT BPTTActorCriticConv_T2_HINT_OFFSET BPTTAc
     python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 20 --time 12:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/${alg}.json
 done
 
+# DQN and DRQN run one process per run, sharing the node's GPU through MPS.
+# On vulcan-gpu-mps.json (16 runs/node, 8G each, default ~2% of the GPU each)
+# 10M DQN runs hit GPU OOM after ~5h and DRQN runs hit host OOM after ~17h.
+# vulcan-gpu-mps-c8-16G.json: 8 runs/node, 16G and 10% of the GPU each.
 # DQN timed out at E136's 3h limit.
 for alg in DQN_LN_HINT DQN_LN_HINT_OFFSET DQN_LN_HINT_TARGET; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
 done
 
 # DRQN: 10x the sweep's steps, which took up to 9h per run, so a 10M run may need
@@ -36,5 +40,5 @@ done
 # state; when a job times out, re-run this script -- once no DRQN job is still
 # running -- and it resumes each unfinished run from its last checkpoint.
 for alg in DRQN_LN_HINT DRQN_LN_HINT_OFFSET DRQN_LN_HINT_TARGET; do
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/${alg}.json
 done
