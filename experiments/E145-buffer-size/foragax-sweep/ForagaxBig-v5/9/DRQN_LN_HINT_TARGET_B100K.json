@@ -1,0 +1,56 @@
+{
+    "agent": "DRQN_LN_HINT_TARGET_B100K",
+    "problem": "Foragax",
+    "total_steps": 1000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "epsilon": [
+            0.05,
+            0.1,
+            0.25,
+            0.5
+        ],
+        "target_refresh": 128,
+        "buffer_size": 100000,
+        "buffer_min_size": 50,
+        "batch": 4,
+        "environment": {
+            "env_id": "ForagaxBig-v5",
+            "aperture_size": 9,
+            "observation_type": "rgb",
+            "hint_duration": 100,
+            "target_offset": true
+        },
+        "experiment": {
+            "seed_offset": 1000000,
+            "save_every": 1000000
+        },
+        "gamma": 0.99,
+        "optimizer": {
+            "name": "Adam",
+            "alpha": [
+                0.003,
+                0.001,
+                0.0003,
+                0.0001,
+                3e-05
+            ],
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "eps": 1e-05
+        },
+        "representation": {
+            "type": "ForagerGRUNetReLU",
+            "hidden": 64,
+            "layers": 2,
+            "use_layernorm": true,
+            "pre_gru_layers": 1,
+            "post_gru_layers": 1,
+            "scalar_features": "hint,last_action,last_reward"
+        },
+        "update_freq": 4,
+        "sequence_length": 64,
+        "burn_in_steps": 16,
+        "delta_q_metric": true
+    }
+}
