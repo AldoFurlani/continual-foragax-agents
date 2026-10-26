@@ -12,10 +12,22 @@ from ml_instrumentation.Collector import Collector
 import utils.chex as cxu
 from algorithms.nn.NNAgent import AgentState as BaseAgentState
 from algorithms.nn.NNAgent import Hypers as BaseHypers
+from algorithms.nn.NNAgent import Metrics as BaseMetrics
 from algorithms.nn.NNAgent import NNAgent
 from representations.networks import NetworkBuilder
 from utils.jax import huber_loss
 from utils.policies import egreedy_probabilities
+
+
+# R2D2's Q-value discrepancy (Kapturowski et al. 2019), logged when the
+# `delta_q_metric` hyper is set: how far Q at a trained step moves when the
+# hidden state entering it comes from the replay unroll (stored start state +
+# burn-in) instead of the state stored while acting. Large values mean stored
+# states have gone stale relative to the current network.
+@cxu.dataclass
+class DeltaQMetrics(BaseMetrics):
+    delta_q_first: jax.Array
+    delta_q_last: jax.Array
 
 
 @cxu.dataclass
@@ -103,16 +115,26 @@ class DRQN(NNAgent):
             burn_in_steps=params.get("burn_in_steps", 0),
         )
 
+        self.delta_q_metric = params.get("delta_q_metric", False)
+        metrics = self.state.metrics
+        if self.delta_q_metric:
+            metrics = DeltaQMetrics(
+                **metrics.__dict__,
+                delta_q_first=jnp.float32(0.0),
+                delta_q_last=jnp.float32(0.0),
+            )
+
         self.state = AgentState(
             **{
                 k: v
                 for k, v in self.state.__dict__.items()
-                if k != "hypers" and k != "buffer_state"
+                if k != "hypers" and k != "buffer_state" and k != "metrics"
             },
             target_params=self.state.params,
             buffer_state=buffer_state,
             carry=None,
             hypers=hypers,
+            metrics=metrics,
         )
 
         self.burn_in_steps = self.state.hypers.burn_in_steps
@@ -263,6 +285,9 @@ class DRQN(NNAgent):
         scalars = batch["scalars"][:, :-1]
         scalars_p = batch["scalars"][:, 1:]
 
+        # States stored while acting, entering each trained step.
+        stored_carry = carry
+
         # Perform burn-in
         if self.burn_in_steps > 0:
             b_x, x = jnp.hsplit(x, [self.burn_in_steps])
@@ -276,6 +301,7 @@ class DRQN(NNAgent):
             _, a = jnp.hsplit(a, [self.burn_in_steps])
             _, r = jnp.hsplit(r, [self.burn_in_steps])
             _, g = jnp.hsplit(g, [self.burn_in_steps])
+            stored_carry = carry
 
             carry = self._set_carry_start(
                 carry,
@@ -318,6 +344,10 @@ class DRQN(NNAgent):
         qs = self.q(params, phi)
         qsp = self.q(target, phi_p)
 
+        delta_q = {}
+        if self.delta_q_metric and not isinstance(stored_carry, tuple):
+            delta_q = self._delta_q(params, x, scalars, reset, stored_carry, qs)
+
         qs = qs.reshape(-1, qs.shape[-1])
         qsp = qsp.reshape(-1, qsp.shape[-1])
         a = a.ravel()
@@ -336,9 +366,35 @@ class DRQN(NNAgent):
             "loss": loss,
             "abs_td_error": jnp.mean(jnp.abs(batch_metrics["delta"])),
             "squared_td_error": jnp.mean(jnp.square(batch_metrics["delta"])),
+            **delta_q,
         }
 
         return loss, metrics
+
+    def _delta_q(self, params, x, scalars, reset, stored_carry, qs):
+        # Q at each trained step from its stored state alone: every step is run
+        # as its own length-1 sequence. qs is the replay unroll's Q, [B, T, A].
+        B, T = x.shape[:2]
+        q_stored = self.q(
+            params,
+            self.phi(
+                params,
+                x.reshape(B * T, 1, *x.shape[2:]),
+                scalars=scalars.reshape(B * T, 1, -1),
+                carry=stored_carry.reshape(B * T, *stored_carry.shape[2:]),
+                reset=reset.reshape(B * T, 1),
+                is_target=False,
+            )[0],
+        ).reshape(qs.shape)
+        q_replay = jax.lax.stop_gradient(qs)
+        q_stored = jax.lax.stop_gradient(q_stored)
+        # R2D2 normalises by the largest |Q| over actions and steps of the sequence.
+        scale = jnp.max(jnp.abs(q_replay), axis=(1, 2)) + 1e-8
+        dq = jnp.linalg.norm(q_replay - q_stored, axis=-1) / scale[:, None]
+        return {
+            "delta_q_first": jnp.mean(dq[:, 0]),
+            "delta_q_last": jnp.mean(dq[:, -1]),
+        }
 
     @partial(jax.jit, static_argnums=0)
     def _start(self, state: AgentState, obs: Union[jax.Array, Dict[str, jax.Array]]):
