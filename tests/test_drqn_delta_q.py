@@ -13,7 +13,7 @@ from algorithms.nn.DRQN import DRQN
 from experiment import ExperimentModel
 from problems.registry import getProblem
 
-EXP = "experiments/E145-buffer-size/foragax-sweep/ForagaxBig-v5/9/DRQN_LN_HINT_B1K.json"
+EXP = "experiments/E144-patch-offsets/foragax-sweep/ForagaxBig-v5/9/DRQN_LN_HINT.json"
 
 
 def _filled_agent(burn_in_steps) -> DRQN:
@@ -22,6 +22,7 @@ def _filled_agent(burn_in_steps) -> DRQN:
     # No updates, so every stored state comes from the parameters the loss sees.
     problem.params["freeze_steps"] = 0
     problem.params["burn_in_steps"] = burn_in_steps
+    problem.params["delta_q_metric"] = True
     agent = cast(DRQN, problem.getAgent())
 
     shapes = cast(dict, problem.observations)
