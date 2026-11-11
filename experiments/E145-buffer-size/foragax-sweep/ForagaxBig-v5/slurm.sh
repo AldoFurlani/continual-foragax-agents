@@ -25,8 +25,11 @@
 #   own index, which flashbax does with an out-of-place scatter costing
 #   O(total buffer) per step (~6x slower steps at 100K than 10K on CPU), so
 #   B100K packs 16 runs/job.
-# - DRQN runs one process per run under MPS. The 8-per-node, 10%-of-GPU
-#   vulcan-gpu-mps-c8-16G.json leaves room for its ~130 MB buffer.
+# - DRQN runs one process per run under MPS, 16 per GPU on vulcan-gpu-mps.json
+#   as in E144's DRQN sweep: each gets ~2% of the GPU, room for the ~130 MB
+#   buffer (if not, a run fails at start-up, when the buffer is allocated).
+#   The 8-per-GPU vulcan-gpu-mps-c8-16G.json is for the 10M evals, where E144
+#   hit host OOM on this profile.
 #
 # scripts/slurm.py is idempotent: re-run to fill seeds lost to OOM or timeout.
 SWEEP=experiments/E145-buffer-size/foragax-sweep/ForagaxBig-v5/9
@@ -38,4 +41,4 @@ done
 
 # DRQN: 24h as in E144 -- its 1M sweep runs took up to 9h, and a sweep run never
 # reaches the 1M checkpoint, so one that times out restarts from zero.
-python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 24:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/DRQN_LN_HINT_B100K.json
+python scripts/slurm.py --cluster clusters/vulcan-gpu-mps.json --time 24:00:00 --runs 10 --force --entry src/continuing_main.py -e $SWEEP/DRQN_LN_HINT_B100K.json
