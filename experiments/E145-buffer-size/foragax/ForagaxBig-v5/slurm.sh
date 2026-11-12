@@ -27,10 +27,11 @@ done
 
 # DRQN: one process per run, 8 per GPU on vulcan-gpu-mps-c8-16G.json (16G host
 # and 10% of the GPU each), as E144's eval: vulcan-gpu-mps.json hit host OOM
-# on 10M runs. A 10M run takes ~90h (E144's 1M sweep runs took up to 9h), so
-# this asks for 120h: vulcan's GPU partitions allow up to 7 days, and one job
-# saves re-launching every 24h (longer jobs may wait longer in the queue).
+# on 10M runs (E144's 15-per-GPU eval jobs ran out of memory after ~17-18h).
+# A 10M run takes ~20h: E145's DRQN sweep took ~2h per 1M steps at 15 per
+# GPU, and E144's 10M runs were nearly done at 17-18h. 36h leaves ~1.8x margin
+# and stays in vulcan's 3-day GPU partition.
 # save_every 1M (from the sweep config) checkpoints the full agent state, so if
 # a job still times out, re-run this line once no DRQN job is running and it
 # resumes each unfinished run from its last checkpoint.
-python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 120:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/DRQN_LN_HINT_B100K.json
+python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 36:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/DRQN_LN_HINT_B100K.json
