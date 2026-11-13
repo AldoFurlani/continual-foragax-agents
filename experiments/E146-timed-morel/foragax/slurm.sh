@@ -8,17 +8,17 @@
 #
 # The environment is the local copy in src/environments/TimedMorel.py.
 #
-# Packing follows earlier evals of these agents; none of it has been calibrated
-# on this environment:
+# Packing, from what the sweep measured (the eval itself is not yet run):
 # - DQN: 15 vmapped runs per GPU (E145). With no save_every a run's 10M steps
 #   are one chunk, so every step's logged data lands in host memory at the end.
-# - DRQN: one process per run on CPU nodes, 16 per job, no GPU, 12h. A 10M run
-#   took the equivalent of ~1.7h locally at FOV 5; set the time from the
-#   sweep's measured walltime (x10) before submitting. With no save_every a
-#   run that times out restarts from zero.
-# - PPO and RTU-PPO: 15 vmapped runs per GPU, 6h, up from R1's 5 and NOT
-#   tested on the cluster. 15 keeps the logged data of a 10M run within host
-#   memory, as for DQN. Set it from what the sweep's packing survived.
+# - DRQN: one process per run on CPU nodes, 16 per job, no GPU, 24h. The 1M
+#   sweep jobs took 56-72 min at FOV 17, so a 10M run there needs ~10-12h.
+#   With no save_every a run that times out restarts from zero.
+# - PPO: 15 vmapped runs per GPU, 6h. The sweep ran 54 per GPU in ~5 min per
+#   1M steps; 15 keeps the logged data of a 10M run within host memory, as for
+#   DQN.
+# - RTU-PPO: 6 per GPU, as in the sweep: it needs ~4.4 GiB of GPU memory per
+#   run and 18 per GPU died of RESOURCE_EXHAUSTED.
 # - Baselines are scripted and jitted: 15 vmapped runs per GPU.
 EVAL=experiments/E146-timed-morel/foragax
 
@@ -30,13 +30,17 @@ for cond in ForagaxTimedMorel-v1-no-fog/17 ForagaxTimedMorel-v1-k1/5 ForagaxTime
     done
 
     for variant in "" _frozen_5M; do
-        python scripts/slurm.py --cluster clusters/vulcan-cpu.json --time 12:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/$cond/DRQN$variant.json
+        python scripts/slurm.py --cluster clusters/vulcan-cpu.json --time 24:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/$cond/DRQN$variant.json
     done
 
-    for alg in ActorCriticMLP ActorCriticMLP-reward-trace RealTimeActorCriticMLP; do
+    for alg in ActorCriticMLP ActorCriticMLP-reward-trace; do
         for variant in "" _frozen_5M; do
             python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 15 --time 06:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/$cond/$alg$variant.json
         done
+    done
+
+    for variant in "" _frozen_5M; do
+        python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 6 --time 06:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/$cond/RealTimeActorCriticMLP$variant.json
     done
 done
 

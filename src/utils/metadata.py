@@ -2,6 +2,7 @@ import logging
 import time
 
 import numpy as np
+from filelock import FileLock
 from ml_instrumentation.metadata import attach_metadata
 
 
@@ -11,9 +12,14 @@ def attach_metadata_with_retry(save_path, idx, meta, attempts: int = 6):
     # the lock can fail with ESTALE ("Stale file handle"); unretried, that kills
     # the save loop and loses every not-yet-saved run in the job. The failure is
     # in lock acquisition, before any row is written, so retrying is safe.
+    #
+    # One lock object for all attempts: filelock refuses, with a RuntimeError
+    # ("Deadlock"), a second FileLock on a path whose first acquire failed in
+    # this thread, which turned the first retry into a crash.
+    lock = FileLock(f"{save_path}.lock")
     for attempt in range(attempts):
         try:
-            attach_metadata(save_path, idx, meta)
+            attach_metadata(save_path, idx, meta, lock=lock)
             return
         except OSError as e:
             if attempt == attempts - 1:

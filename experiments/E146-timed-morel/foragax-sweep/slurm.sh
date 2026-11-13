@@ -19,19 +19,16 @@
 #
 # The environment is the local copy in src/environments/TimedMorel.py.
 #
-# Packing follows the experiments these configs come from; none of it has been
-# calibrated on this environment:
+# Packing, from the first submission of this sweep:
 # - DQN vmaps all runs of a file on one GPU (E144/E145).
-# - PPO packs 54 vmapped runs per GPU and RTU-PPO 18, up from R1's 5. NOT
-#   tested on the cluster. The reasoning: a 2048-step rollout is ~1 MB per run
-#   at FOV 5 and ~10 MB at FOV 17, so rollouts are not the limit; RTU-PPO also
-#   carries its RTRL traces, and E144 ran it at 24 per GPU against 256 for
-#   PPO. If a job dies of OOM or times out, lower --tasks and re-run.
+# - PPO packs 54 vmapped runs per GPU: a job takes ~5 min.
+# - RTU-PPO packs 6. It needs ~4.4 GiB of GPU memory per run at FOV 5 (18 runs
+#   asked for 79.56 GiB and died of RESOURCE_EXHAUSTED) and the GPU has ~38 GiB
+#   usable, so 8 would fit with almost no margin. FOV 17 is not measured.
 # - DRQN runs one process per run on CPU nodes, 16 per job, no GPU. The net is
-#   a small MLP: a local run took ~6 s per 10K steps at FOV 5 (~10 min per 1M),
-#   and vmapping 16 runs was at least 5x slower per run. FOV 17 and the
-#   cluster's single-threaded cores are not timed, hence 4h: a 1M sweep run
-#   never reaches a checkpoint, so one that times out restarts from zero.
+#   a small MLP, and locally vmapping 16 runs was at least 5x slower per run.
+#   At FOV 17 a job took 56-72 min and ~1.5G per run. 4h because a 1M sweep
+#   run never reaches a checkpoint, so one that times out restarts from zero.
 #
 # scripts/slurm.py is idempotent: re-run to fill seeds lost to OOM or timeout.
 SWEEP=experiments/E146-timed-morel/foragax-sweep
@@ -47,5 +44,5 @@ for cond in ForagaxTimedMorel-v1-no-fog/17 ForagaxTimedMorel-v1-k1/5 ForagaxTime
         python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 54 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/$cond/$alg.json
     done
 
-    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 18 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/$cond/RealTimeActorCriticMLP.json
+    python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 6 --time 03:00:00 --runs 10 --force --entry src/rtu_ppo.py -e $SWEEP/$cond/RealTimeActorCriticMLP.json
 done
