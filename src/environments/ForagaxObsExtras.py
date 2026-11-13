@@ -31,6 +31,8 @@ from foragax.env import ForagaxEnv
 from foragax.registry import make as foragax_make
 from gymnax.environments import spaces
 
+from environments import TimedMorel as timed_morel
+
 
 class ExtendedObsForagaxEnv(ForagaxEnv):
     agent_channel: bool
@@ -99,7 +101,11 @@ class ExtendedObsForagaxEnv(ForagaxEnv):
 
 
 def make(env_id, agent_channel=False, patch_offsets=False, target_offset=False, **kwargs):
-    env = foragax_make(env_id, **kwargs)
+    if env_id == timed_morel.ENV_ID:
+        # Not in the released continual-foragax yet: use the local copy.
+        env = timed_morel.make(env_id, **kwargs)
+    else:
+        env = foragax_make(env_id, **kwargs)
     if not (agent_channel or patch_offsets or target_offset):
         return env
     if agent_channel and (not env.full_world or env.observation_type == "object"):

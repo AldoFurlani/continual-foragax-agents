@@ -1,0 +1,18 @@
+{
+    "agent": "Random",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxTimedMorel-v1",
+            "band_move_every": 1250,
+            "aperture_size": 17,
+            "observation_type": "color",
+            "fog": false
+        },
+        "experiment": {
+            "seed_offset": 0
+        }
+    }
+}

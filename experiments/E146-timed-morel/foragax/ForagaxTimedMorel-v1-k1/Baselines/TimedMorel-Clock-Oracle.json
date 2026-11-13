@@ -1,0 +1,19 @@
+{
+    "agent": "TimedMorel-Clock-Oracle",
+    "problem": "Foragax",
+    "total_steps": 10000000,
+    "episode_cutoff": -1,
+    "metaParameters": {
+        "environment": {
+            "env_id": "ForagaxTimedMorel-v1",
+            "band_move_every": 1,
+            "aperture_size": -1,
+            "observation_type": "object",
+            "fog": false
+        },
+        "experiment": {
+            "seed_offset": 0
+        },
+        "mode": "clock_oracle"
+    }
+}

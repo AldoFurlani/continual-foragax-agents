@@ -20,6 +20,7 @@ from algorithms.nn.MADRQN import MADRQN
 from algorithms.RandomAgent import RandomAgent
 from algorithms.SearchAgent import SearchAgent
 from algorithms.tc.ESARSA import ESARSA
+from algorithms.TimedMorelAgent import TimedMorelAgent
 from algorithms.tc.SoftmaxAC import SoftmaxAC
 
 
@@ -86,5 +87,8 @@ def getAgent(name) -> Type[BaseAgent]:
 
     if name.startswith("MCTS"):
         return MCTSAgent
+
+    if name.startswith("TimedMorel"):
+        return TimedMorelAgent
 
     raise Exception("Unknown algorithm")
