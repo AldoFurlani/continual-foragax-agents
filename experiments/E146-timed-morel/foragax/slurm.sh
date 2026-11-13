@@ -16,7 +16,9 @@
 #   took the equivalent of ~1.7h locally at FOV 5; set the time from the
 #   sweep's measured walltime (x10) before submitting. With no save_every a
 #   run that times out restarts from zero.
-# - PPO with 2048-step rollouts: 5 runs per job, 6h (R1).
+# - PPO and RTU-PPO: 15 vmapped runs per GPU, 6h, up from R1's 5 and NOT
+#   tested on the cluster. 15 keeps the logged data of a 10M run within host
+#   memory, as for DQN. Set it from what the sweep's packing survived.
 # - Baselines are scripted and jitted: 15 vmapped runs per GPU.
 EVAL=experiments/E146-timed-morel/foragax
 
@@ -33,7 +35,7 @@ for cond in ForagaxTimedMorel-v1-no-fog/17 ForagaxTimedMorel-v1-k1/5 ForagaxTime
 
     for alg in ActorCriticMLP ActorCriticMLP-reward-trace RealTimeActorCriticMLP; do
         for variant in "" _frozen_5M; do
-            python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 5 --time 06:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/$cond/$alg$variant.json
+            python scripts/slurm.py --cluster clusters/vulcan-gpu-vmap-32G.json --tasks 15 --time 06:00:00 --runs 30 --force --entry src/rtu_ppo.py -e $EVAL/$cond/$alg$variant.json
         done
     done
 done
