@@ -12,7 +12,10 @@
 # on this environment:
 # - DQN: 15 vmapped runs per GPU (E145). With no save_every a run's 10M steps
 #   are one chunk, so every step's logged data lands in host memory at the end.
-# - DRQN: one process per run, 8 per GPU, 36h (E145).
+# - DRQN: one process per run on CPU nodes, 16 per job, no GPU, 12h. A 10M run
+#   took the equivalent of ~1.7h locally at FOV 5; set the time from the
+#   sweep's measured walltime (x10) before submitting. With no save_every a
+#   run that times out restarts from zero.
 # - PPO with 2048-step rollouts: 5 runs per job, 6h (R1).
 # - Baselines are scripted and jitted: 15 vmapped runs per GPU.
 EVAL=experiments/E146-timed-morel/foragax
@@ -25,7 +28,7 @@ for cond in ForagaxTimedMorel-v1-no-fog/17 ForagaxTimedMorel-v1-k1/5 ForagaxTime
     done
 
     for variant in "" _frozen_5M; do
-        python scripts/slurm.py --cluster clusters/vulcan-gpu-mps-c8-16G.json --time 36:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/$cond/DRQN$variant.json
+        python scripts/slurm.py --cluster clusters/vulcan-cpu.json --time 12:00:00 --runs 30 --force --entry src/continuing_main.py -e $EVAL/$cond/DRQN$variant.json
     done
 
     for alg in ActorCriticMLP ActorCriticMLP-reward-trace RealTimeActorCriticMLP; do
